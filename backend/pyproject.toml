@@ -5,6 +5,7 @@ description = "Chronobiology and physiology observatory for Apple Health exports
 authors = [
     { name = "Vasu Kandagatla" }
 ]
+license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
     "duckdb>=2.0.0",

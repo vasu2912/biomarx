@@ -1,0 +1,128 @@
+@import "tailwindcss";
+@import "@fontsource-variable/fraunces/full.css";
+@import "@fontsource-variable/fraunces/full-italic.css";
+@import "@fontsource-variable/inter-tight";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+  One theme: warm ink at night. Signal colors are luminous on purpose (OKLCH L 0.6-0.82),
+  above the validator's 0.48-0.67 dark band: on a near-black instrument face they read as
+  light sources, and every co-plotted pair passes CVD and normal-vision separation.
+*/
+@theme {
+  --color-bg: #07090c;
+  --color-surface: #0d1015;
+  --color-raised: #131820;
+  --color-sunken: #050608;
+  --color-hairline: rgb(236 234 228 / 0.08);
+  --color-hairline-2: rgb(236 234 228 / 0.14);
+  --color-ink: #eceae4;
+  --color-ink-2: #a7a69e;
+  --color-ink-3: #7c7d76;
+  --color-ink-4: #4a4b47;
+
+  --color-deep: #4c5bff;
+  --color-core: #86a8f0;
+  --color-rem: #41cfc3;
+  --color-awake: #f2677b;
+  --color-worn: #29231b;
+  --color-unworn: #0f1318;
+
+  --color-sun: #f4b94a;
+  --color-ember: #ff6b3d;
+  --color-hrv: #a88bff;
+  --color-spo2: #4cc3f0;
+  --color-resp: #d9c07a;
+  --color-onset: #e2557f;
+  --color-mid: #41cfc3;
+  --color-wake: #f4b94a;
+  --color-cool: #5b8dee;
+
+  --color-good: #6fcf8e;
+  --color-bad: #f2677b;
+
+  --font-display: "Fraunces Variable", "Iowan Old Style", Georgia, serif;
+  --font-sans: "Inter Tight Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --rail-w: 248px;
+    --topbar-h: 64px;
+  }
+  html,
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+  ::selection {
+    background: rgb(76 91 255 / 0.45);
+  }
+  :focus-visible {
+    outline: 1.5px solid var(--color-core);
+    outline-offset: 2px;
+  }
+  svg text {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+@utility display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 30, "WONK" 0;
+  letter-spacing: -0.015em;
+}
+
+@utility pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The faint 24 h dial texture behind the page; pure decoration, so it sits under everything. */
+.observatory-bg {
+  background:
+    radial-gradient(1200px 600px at 78% -10%, rgb(76 91 255 / 0.07), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgb(255 107 61 / 0.045), transparent 60%),
+    var(--color-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

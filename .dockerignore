@@ -1,0 +1,37 @@
+# Never ship private health data or local state
+data
+**/data/*.duckdb*
+*.duckdb*
+*.sqlite*
+*.zip
+export.xml
+export_cda.xml
+electrocardiograms
+.env
+.env.*
+.audit
+
+# VCS, editors, OS
+.git
+.gitignore
+.vscode
+.idea
+**/.DS_Store
+
+# Build and test output, caches
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/*.log
+frontend/dist
+frontend/e2e
+playwright-report
+test-results
+
+# Not needed at runtime
+backend/tests
+backend/scripts
+docs
+Makefile

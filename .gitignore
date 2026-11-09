@@ -1,0 +1,35 @@
+# Private health data: never commit
+/data/
+*.duckdb
+*.duckdb.*
+*.sqlite
+*.sqlite-*
+*.zip
+export.xml
+export_cda.xml
+electrocardiograms/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/openapi.json
+frontend/e2e/screenshots/
+playwright-report/
+test-results/
+
+# Local
+.DS_Store
+.env
+.env.*
+*.log
+.audit/
+.vscode/*
+!.vscode/extensions.json
+.idea

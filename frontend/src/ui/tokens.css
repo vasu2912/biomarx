@@ -118,6 +118,59 @@
     var(--color-bg);
 }
 
+/* The wordmark's pulse: a dim trace with a bright segment sweeping along it. */
+.logo-mark path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.logo-base {
+  opacity: 0.38;
+  transition: opacity 0.4s var(--ease-out-quint);
+}
+.logo-sweep {
+  stroke-dasharray: 26 100;
+  stroke-dashoffset: 26;
+  filter: drop-shadow(0 0 2.5px currentColor);
+  animation: logo-beat 3.2s linear infinite;
+}
+.logo:hover .logo-base,
+.logo:focus-visible .logo-base {
+  opacity: 0.7;
+}
+.logo:hover .logo-sweep,
+.logo:focus-visible .logo-sweep {
+  animation-duration: 0.85s;
+  stroke-width: 1.6;
+}
+.logo .display {
+  transition: letter-spacing 0.5s var(--ease-out-quint), color 0.3s;
+}
+.logo:hover .display {
+  letter-spacing: 0.005em;
+}
+/* sweep across in the first ~40% of the cycle, then hold dark until the next beat */
+@keyframes logo-beat {
+  0% {
+    stroke-dashoffset: 26;
+  }
+  42%,
+  100% {
+    stroke-dashoffset: -100;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-base {
+    opacity: 1;
+  }
+  .logo-sweep {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

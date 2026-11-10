@@ -89,7 +89,7 @@ export function RangeControl() {
         <BrushLayer n={n} spanStart={span.start} rangeStart={range.start} rangeEnd={range.end} onPick={(start, end) => setSelection({ kind: 'custom', start, end })} />
       </div>
       <Tooltip content={`${daysBetween(range.start, range.end)} days selected`}>
-        <div className="num shrink-0 text-[11.5px] whitespace-nowrap text-ink-2">{formatRange(range.start, range.end)}</div>
+        <div className="num hidden shrink-0 text-[11.5px] whitespace-nowrap text-ink-2 sm:block">{formatRange(range.start, range.end)}</div>
       </Tooltip>
     </div>
   )

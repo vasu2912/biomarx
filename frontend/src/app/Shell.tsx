@@ -66,6 +66,7 @@ function ObservatoryLayout({ dataset, defs }: { dataset: Dataset; defs: readonly
         <Rail />
         <header className="sticky top-0 z-30 flex h-[var(--topbar-h)] items-center gap-4 border-b border-hairline bg-bg/85 px-4 backdrop-blur-md sm:px-8">
           <RangeControl />
+          <ImportLink />
         </header>
         <MobileNav />
         <main className="mx-auto max-w-[1180px] px-4 pt-10 pb-24 sm:px-8">
@@ -136,22 +137,33 @@ function Rail() {
           </li>
         ))}
       </ol>
-      <div className="space-y-3 border-t border-hairline px-6 py-5 text-[11.5px] text-ink-3">
-        <div>
-          <div className="eyebrow mb-1">Dataset</div>
-          <div className="num text-ink-2">{formatRange(dataset.start, dataset.end)}</div>
-          <div className="num">
-            {compact(dataset.records)} records · {dataset.nights} nights
-          </div>
+      <div className="border-t border-hairline px-6 py-5 text-[11.5px] text-ink-3">
+        <div className="eyebrow mb-1">Dataset</div>
+        <div className="num text-ink-2">{formatRange(dataset.start, dataset.end)}</div>
+        <div className="num">
+          {compact(dataset.records)} records · {dataset.nights} nights
         </div>
-        <NavLink
-          to={{ pathname: '/import', search }}
-          className={({ isActive }) => cn('inline-flex items-center gap-1.5 transition-colors hover:text-ink', isActive && 'text-ink')}
-        >
-          <Upload size={13} /> Import a new export
-        </NavLink>
       </div>
     </nav>
+  )
+}
+
+function ImportLink() {
+  const { search } = useLocation()
+  return (
+    <NavLink
+      to={{ pathname: '/import', search }}
+      aria-label="Import a new export"
+      className={({ isActive }) =>
+        cn(
+          'inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-hairline-2 px-2.5 text-[13px] font-medium text-ink transition-colors hover:bg-raised sm:px-3.5',
+          isActive && 'bg-raised',
+        )
+      }
+    >
+      <Upload size={14} />
+      <span className="hidden sm:inline">Import</span>
+    </NavLink>
   )
 }
 
@@ -238,7 +250,7 @@ function MobileNav() {
   const { search } = useLocation()
   return (
     <nav aria-label="Chapters" className="flex gap-1 overflow-x-auto border-b border-hairline px-4 py-2 lg:hidden">
-      {[...CHAPTERS, { n: '', path: '/import', title: 'Import' }].map((c) => (
+      {CHAPTERS.map((c) => (
         <NavLink
           key={c.path}
           to={{ pathname: c.path, search }}

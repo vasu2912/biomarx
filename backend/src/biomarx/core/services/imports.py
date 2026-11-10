@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 
 from biomarx.core.domain import ImportJob, ImportState
-from biomarx.core.ports import ExportReader, JobRegistry, JobRunner, Store, UploadStore
+from biomarx.core.ports import ExportFormatError, ExportReader, JobRegistry, JobRunner, Store, UploadStore
 from biomarx.core.services.derivation import derive
 
 log = logging.getLogger(__name__)
@@ -16,8 +16,12 @@ MAX_EXPORT_BYTES = 8 * 1024**3
 PARSE_SHARE = 0.8
 
 
-class ImportError_(Exception):
-    """A request the import state machine cannot accept."""
+class ImportRejected(ValueError):
+    """The request itself is invalid: wrong file, size or chunk index."""
+
+
+class ImportConflict(Exception):
+    """The request is valid but the import is not in a state that accepts it."""
 
 
 class ImportService:
@@ -25,12 +29,17 @@ class ImportService:
         self.store, self.reader, self.uploads, self.jobs, self.runner = store, reader, uploads, jobs, runner
 
     def create(self, filename: str, size: int) -> ImportJob:
-        if size <= 0 or size > MAX_EXPORT_BYTES:
-            raise ImportError_("Exports larger than 8 GB are not supported.")
+        if size <= 0:
+            raise ImportRejected("This file is empty.")
+        if size > MAX_EXPORT_BYTES:
+            raise ImportRejected("Exports larger than 8 GB are not supported.")
         if not filename.lower().endswith((".zip", ".xml")):
-            raise ImportError_("Choose the export.zip from the Health app, or its export.xml.")
-        if (active := self.jobs.active()) and active.state != ImportState.UPLOADING:
-            raise ImportError_("Another import is already being processed.")
+            raise ImportRejected("Choose the export.zip from the Health app, or its export.xml.")
+        if active := self.jobs.active():
+            if active.state != ImportState.UPLOADING:
+                raise ImportConflict("Another import is already being processed.")
+            active.fail("Replaced by a newer upload.")
+            self.uploads.discard(active.id)
         job = ImportJob(id=uuid.uuid4().hex, filename=filename, size=size, message="Uploading")
         self.uploads.create(job.id)
         self.jobs.add(job)
@@ -38,8 +47,8 @@ class ImportService:
 
     def put_chunk(self, job_id: str, index: int, data: bytes) -> ImportJob:
         job = self._job(job_id, ImportState.UPLOADING)
-        if len(data) > CHUNK_SIZE or index < 0 or index * CHUNK_SIZE >= job.size:
-            raise ImportError_("Chunk is out of range.")
+        if index < 0 or index * CHUNK_SIZE >= job.size:
+            raise ImportRejected("Chunk is out of range.")
         received = self.uploads.write_chunk(job_id, index, data)
         job.report(received / job.size, f"Uploaded {received / 1e6:.0f} of {job.size / 1e6:.0f} MB")
         return job
@@ -48,8 +57,10 @@ class ImportService:
         job = self._job(job_id, ImportState.UPLOADING)
         try:
             path = self.uploads.assemble(job_id, job.filename)
-        except OSError as e:
-            job.fail(f"Could not assemble the upload: {e}")
+        except OSError:
+            log.exception("import %s could not be assembled", job.id)
+            self.uploads.discard(job_id)
+            job.fail("Could not assemble the upload. The server log has the details.")
             return job
         if path.stat().st_size != job.size:
             self.uploads.discard(job_id)
@@ -80,9 +91,11 @@ class ImportService:
                 stage.write_derived(derived)
                 stage.publish()
             job.advance(ImportState.READY, f"{job.records:,} records, {len(derived.nights):,} nights", 1.0)
-        except Exception as e:  # the job is the error boundary for background work
+        except ExportFormatError as e:
+            job.fail(str(e))
+        except Exception:  # the job is the error boundary for background work
             log.exception("import %s failed", job.id)
-            job.fail(str(e) or e.__class__.__name__)
+            job.fail("The export could not be read. The server log has the details.")
         finally:
             if not keep_source:
                 self.uploads.discard(job.id)
@@ -95,5 +108,5 @@ class ImportService:
         if job is None:
             raise KeyError(job_id)
         if job.state != state:
-            raise ImportError_(f"Import is {job.state}, expected {state}.")
+            raise ImportConflict(f"Import is {job.state}, expected {state}.")
         return job

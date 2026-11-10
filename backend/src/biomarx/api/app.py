@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from biomarx.api.routes import router
@@ -28,9 +30,19 @@ def create_app(settings: Settings | None = None, lazy: bool = False) -> FastAPI:
 
     app = FastAPI(title="Biomarx", version="0.2.0", lifespan=lifespan)
     app.add_middleware(GZipMiddleware, minimum_size=2048)
+    # A page on another domain can re-point its DNS at 127.0.0.1; only loopback names reach the data.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]", settings.host])
+    app.add_exception_handler(RequestValidationError, _validation_error)
     app.include_router(router)
     _mount_frontend(app, settings)
     return app
+
+
+async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """Every error body is `{detail: str}`, the shape the UI renders."""
+    e = exc.errors()[0]
+    field = ".".join(str(p) for p in e["loc"][1:])
+    return JSONResponse({"detail": f"{field}: {e['msg']}" if field else e["msg"]}, status_code=422)
 
 
 def _mount_frontend(app: FastAPI, settings: Settings) -> None:

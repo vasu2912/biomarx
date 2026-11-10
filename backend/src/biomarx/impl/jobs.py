@@ -32,6 +32,7 @@ class MemoryJobRegistry:
 
     def add(self, job: ImportJob) -> None:
         with self._lock:
+            self._jobs = {k: j for k, j in self._jobs.items() if j.active}
             self._jobs[job.id] = job
 
     def get(self, job_id: str) -> ImportJob | None:

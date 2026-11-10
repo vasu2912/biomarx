@@ -8,8 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from biomarx.api import schemas as s
 from biomarx.container import Container
-from biomarx.core.metrics import METRICS
-from biomarx.core.services.imports import CHUNK_SIZE, ImportError_
+from biomarx.core.metrics import DAILY_KEYS, METRICS
+from biomarx.core.services.imports import CHUNK_SIZE, ImportConflict, ImportRejected
 from biomarx.core.services.insights import InsightService, RasterName, Window
 
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -30,6 +30,8 @@ def window(
     start: Annotated[dt.date | None, Query(description="First day, inclusive")] = None,
     end: Annotated[dt.date | None, Query(description="Last day, exclusive")] = None,
 ) -> Window:
+    if start and end and end <= start:
+        raise HTTPException(422, "end must be after start.")
     if ins.dataset() is None:
         raise HTTPException(404, "No dataset imported yet.")
     return ins.window(start, end)
@@ -41,6 +43,24 @@ Win = Annotated[Window, Depends(window)]
 
 def _range(w: Window) -> s.RangeOut:
     return s.RangeOut(start=w.range.start, end=w.range.end)
+
+
+IMPORT_ERRORS = {404: {"model": s.ErrorOut}, 409: {"model": s.ErrorOut}, 422: {"model": s.ErrorOut}}
+
+
+def _import_error(e: Exception) -> HTTPException:
+    if isinstance(e, KeyError):
+        return HTTPException(404, "Unknown import.")
+    return HTTPException(422 if isinstance(e, ImportRejected) else 409, str(e))
+
+
+async def _chunk_body(request: Request) -> bytes:
+    data = bytearray()
+    async for part in request.stream():
+        data += part
+        if len(data) > CHUNK_SIZE:
+            raise HTTPException(413, "Chunk is larger than the chunk size.")
+    return bytes(data)
 
 
 # ---------------------------------------------------------------- status and imports
@@ -58,34 +78,30 @@ def metrics() -> list[s.MetricOut]:
     return [s.MetricOut.of(m) for m in METRICS]
 
 
-@router.post("/imports", status_code=201, responses={409: {"model": s.ErrorOut}})
+@router.post("/imports", status_code=201, responses={409: {"model": s.ErrorOut}, 422: {"model": s.ErrorOut}})
 def create_import(body: s.CreateImportIn, c: Annotated[Container, Depends(container)]) -> s.CreateImportOut:
     try:
         job = c.imports.create(body.filename, body.size)
-    except ImportError_ as e:
-        raise HTTPException(409, str(e)) from e
+    except (ImportRejected, ImportConflict) as e:
+        raise _import_error(e) from e
     return s.CreateImportOut(job=s.ImportJobOut.of(job), chunk_size=CHUNK_SIZE)
 
 
-@router.put("/imports/{job_id}/chunks/{index}", responses={404: {"model": s.ErrorOut}, 409: {"model": s.ErrorOut}})
+@router.put("/imports/{job_id}/chunks/{index}", responses={**IMPORT_ERRORS, 413: {"model": s.ErrorOut}})
 async def put_chunk(job_id: str, index: int, request: Request, c: Annotated[Container, Depends(container)]) -> s.ImportJobOut:
-    data = await request.body()
+    data = await _chunk_body(request)
     try:
         return s.ImportJobOut.of(c.imports.put_chunk(job_id, index, data))
-    except KeyError as e:
-        raise HTTPException(404, "Unknown import.") from e
-    except ImportError_ as e:
-        raise HTTPException(409, str(e)) from e
+    except (KeyError, ImportRejected, ImportConflict) as e:
+        raise _import_error(e) from e
 
 
-@router.post("/imports/{job_id}/commit", responses={404: {"model": s.ErrorOut}, 409: {"model": s.ErrorOut}})
+@router.post("/imports/{job_id}/commit", responses=IMPORT_ERRORS)
 def commit_import(job_id: str, c: Annotated[Container, Depends(container)]) -> s.ImportJobOut:
     try:
         return s.ImportJobOut.of(c.imports.commit(job_id))
-    except KeyError as e:
-        raise HTTPException(404, "Unknown import.") from e
-    except ImportError_ as e:
-        raise HTTPException(409, str(e)) from e
+    except (KeyError, ImportConflict) as e:
+        raise _import_error(e) from e
 
 
 @router.get("/imports/{job_id}", responses={404: {"model": s.ErrorOut}})
@@ -104,9 +120,11 @@ def summary(ins: Ins, w: Win) -> s.SummaryOut:
     return s.SummaryOut(range=_range(w), values={k: s.num(v) for k, v in ins.summary(w).items()})
 
 
-@router.get("/daily")
+@router.get("/daily", responses={422: {"model": s.ErrorOut}})
 def daily(ins: Ins, w: Win, metrics: Annotated[str | None, Query(description="Comma-separated metric keys")] = None) -> s.DailyOut:
     keys = tuple(k for k in metrics.split(",") if k) if metrics else None
+    if unknown := sorted(set(keys or ()) - set(DAILY_KEYS)):
+        raise HTTPException(422, f"Unknown metric: {', '.join(unknown)}.")
     cols = ins.daily(w, keys) if keys else ins.daily(w)
     return s.DailyOut(range=_range(w), days=ins.days(w), columns={k: s.vec(v) for k, v in cols.items()})
 
@@ -131,7 +149,6 @@ def raster(name: RasterName, ins: Ins, w: Win) -> Response:
             "X-Shape": f"{r.rows},{r.cols}",
             "X-Dtype": r.dtype,
             "X-Start": r.start.isoformat(),
-            "Access-Control-Expose-Headers": "X-Shape, X-Dtype, X-Start",
             "Cache-Control": "private, max-age=300",
         },
     )

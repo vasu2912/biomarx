@@ -9,17 +9,13 @@ from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.grids import build_grids
 from biomarx.core.domain import Timeline
 from biomarx.core.metrics import DAILY_KEYS, GAIT_TYPES
-from biomarx.core.ports import RecordReader
-
-
-class NoHeartRateData(ValueError):
-    pass
+from biomarx.core.ports import ExportFormatError, RecordReader
 
 
 def derive(reader: RecordReader) -> Derived:
     span = reader.heart_rate_span()
     if span is None:
-        raise NoHeartRateData("The export contains no heart-rate samples, so there is no timeline to analyse.")
+        raise ExportFormatError("The export contains no heart-rate samples, so there is no timeline to analyse.")
     first, last = span
     timeline = Timeline(first, (last - first).days + 1)
     origin = timeline.start

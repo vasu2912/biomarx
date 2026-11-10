@@ -125,8 +125,8 @@ function Rail() {
   const { search } = useLocation()
   return (
     <nav aria-label="Chapters" className="fixed inset-y-0 left-0 z-40 hidden w-[var(--rail-w)] flex-col border-r border-hairline bg-surface/60 backdrop-blur-md lg:flex">
-      <Link to={{ pathname: '/', search }} className="flex h-[var(--topbar-h)] items-center gap-2.5 border-b border-hairline px-6">
-        <PulseGlyph className="text-ember" />
+      <Link to={{ pathname: '/', search }} aria-label="Biomarx, back to the overview" className="logo flex h-[var(--topbar-h)] items-center gap-2.5 border-b border-hairline px-6">
+        <LogoMark />
         <span className="display text-[21px] text-ink">Biomarx</span>
       </Link>
       <ol className="flex-1 space-y-0.5 overflow-y-auto px-3 py-5">
@@ -210,10 +210,26 @@ function Spark({ values, color, active }: { values: (number | null)[]; color: st
   )
 }
 
-function PulseGlyph({ className, style }: { className?: string; style?: React.CSSProperties }) {
+export function PulseGlyph({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
     <svg width={44} height={16} viewBox="0 0 44 16" aria-hidden className={cn('shrink-0', className)} style={style}>
       <path d="M0 9h14l3-6 4 11 3-8 2 3h18" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+const PULSE = 'M0 9h14l3-6 4 11 3-8 2 3h18'
+
+/**
+ * The wordmark's pulse. At rest a bright segment sweeps the trace about once every three seconds,
+ * like a monitor at a slow resting rate; hovering the logo raises the rate and brightens the trace.
+ * The styling and timing live in tokens.css under `.logo`.
+ */
+function LogoMark() {
+  return (
+    <svg width={44} height={16} viewBox="0 0 44 16" aria-hidden className="logo-mark shrink-0 overflow-visible text-ember">
+      <path className="logo-base" d={PULSE} pathLength={100} />
+      <path className="logo-sweep" d={PULSE} pathLength={100} />
     </svg>
   )
 }
@@ -239,8 +255,8 @@ function MobileNav() {
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <div className="observatory-bg min-h-dvh">
-      <header className="flex h-[var(--topbar-h)] items-center gap-2.5 border-b border-hairline px-6">
-        <PulseGlyph className="text-ember" />
+      <header className="logo flex h-[var(--topbar-h)] items-center gap-2.5 border-b border-hairline px-6">
+        <LogoMark />
         <span className="display text-[21px] text-ink">Biomarx</span>
       </header>
       <main className="mx-auto max-w-[1180px] px-4 pt-10 pb-24 sm:px-8">{children}</main>

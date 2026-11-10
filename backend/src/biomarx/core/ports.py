@@ -18,6 +18,10 @@ from biomarx.core.domain import Dataset, ImportJob
 Series = tuple[np.ndarray, np.ndarray]
 
 
+class ExportFormatError(ValueError):
+    """An export the pipeline cannot use. The message is written for the user."""
+
+
 @dataclass(frozen=True)
 class EcgRecording:
     id: str

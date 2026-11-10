@@ -18,17 +18,13 @@ from typing import IO
 
 import numpy as np
 
-from biomarx.core.ports import EcgRecording, ProgressFn, RecordSink
+from biomarx.core.ports import EcgRecording, ExportFormatError, ProgressFn, RecordSink
 
 BATCH = 250_000
 ATTR = re.compile(r'(\w+)="([^"]*)"')
 TYPE_PREFIX = re.compile(r"^HK(?:Quantity|Category|Data)TypeIdentifier")
 ECG_DIR = "electrocardiograms/"
 ECG_KEEP = ("Recorded Date", "Classification", "Sample Rate", "Device")
-
-
-class ExportFormatError(ValueError):
-    pass
 
 
 class AppleHealthReader:

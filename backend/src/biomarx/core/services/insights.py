@@ -80,6 +80,8 @@ class InsightService:
     def window(self, start: dt.date | None, end: dt.date | None) -> Window:
         tl = self._derived().grids.timeline
         default = tl.default_range()
+        if start and not end:
+            end = max(default.end, start + dt.timedelta(days=1))
         r = tl.clamp(DayRange(start or (end - dt.timedelta(days=365) if end else default.start), end or default.end))
         return Window(r, tl.index(r.start), tl.index(r.end), tl)
 

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from biomarx.api.app import create_app
 from biomarx.config import Settings
 from biomarx.container import build
+from biomarx.core.services.imports import CHUNK_SIZE
 from biomarx.impl.jobs import InlineJobRunner
 
 DAYS = 21
@@ -54,7 +55,7 @@ def client(tmp_path):
     settings = Settings(data_dir=tmp_path, static_dir=tmp_path / "dist", host="127.0.0.1", port=0)
     app = create_app(settings, lazy=True)
     app.state.container = build(settings, InlineJobRunner())
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://127.0.0.1") as c:
         yield c
 
 
@@ -110,3 +111,57 @@ def test_bad_upload_fails_and_keeps_the_previous_dataset(client):
     job = upload(client, b"not a zip at all")
     assert job["state"] == "failed" and job["error"]
     assert client.get("/api/status").json()["dataset"]["version"] == version
+
+
+def test_unexpected_failure_hides_internals(client):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("export.xml", b"\xff\xfe not utf-8")
+    job = upload(client, buf.getvalue())
+    assert job["state"] == "failed"
+    assert job["error"] == "The export could not be read. The server log has the details."
+
+
+def test_foreign_host_is_refused(client):
+    assert client.get("/api/status", headers={"host": "attacker.example"}).status_code == 400
+    assert client.get("/api/status", headers={"host": "localhost:4174"}).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("path", "detail"),
+    [
+        ("/api/summary?start=2026-03-10&end=2026-03-01", "end must be after start."),
+        ("/api/daily?metrics=tst,nope", "Unknown metric: nope."),
+        ("/api/summary?start=soon", "start: Input should be a valid date or datetime, input is too short"),
+    ],
+)
+def test_bad_queries_return_422_with_a_message(client, path, detail):
+    upload(client, synthetic_export())
+    r = client.get(path)
+    assert (r.status_code, r.json()) == (422, {"detail": detail})
+
+
+def test_start_past_the_data_clamps_instead_of_failing(client):
+    upload(client, synthetic_export())
+    r = client.get("/api/summary?start=2030-01-01")
+    assert r.status_code == 200 and r.json()["range"]["end"] == "2026-03-23"
+
+
+def test_import_requests_are_validated(client):
+    post = lambda body: client.post("/api/imports", json=body)  # noqa: E731
+    assert post({"filename": "export.zip", "size": 0}).json() == {"detail": "This file is empty."}
+    assert post({"filename": "notes.txt", "size": 10}).status_code == 422
+    assert post({"filename": "export.zip"}).json() == {"detail": "size: Field required"}
+
+    job = post({"filename": "export.zip", "size": 10}).json()["job"]
+    assert client.put(f"/api/imports/{job['id']}/chunks/5", content=b"x").status_code == 422
+    assert client.put(f"/api/imports/{job['id']}/chunks/0", content=b"x" * (CHUNK_SIZE + 1)).status_code == 413
+    assert client.put("/api/imports/nope/chunks/0", content=b"x").status_code == 404
+
+
+def test_a_new_upload_replaces_an_abandoned_one(client, tmp_path):
+    first = client.post("/api/imports", json={"filename": "export.zip", "size": 10}).json()["job"]
+    client.put(f"/api/imports/{first['id']}/chunks/0", content=b"x")
+    client.post("/api/imports", json={"filename": "export.zip", "size": 10})
+    assert not (tmp_path / "uploads" / first["id"]).exists()
+    assert client.get(f"/api/imports/{first['id']}").status_code == 404

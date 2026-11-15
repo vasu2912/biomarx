@@ -282,6 +282,44 @@ class FitnessOut(BaseModel):
     steps_bands: list[StepBandOut]
 
 
+class BaselineSignalOut(BaseModel):
+    key: str
+    concern: Literal["up", "down"]
+    value: Vec
+    median: Vec
+    scale: Vec
+    z: Vec
+
+
+class BaselineOut(BaseModel):
+    """Per day of the range (night D): each signal against the 28 nights before it. `scale` is 1.4826 × MAD."""
+
+    range: RangeOut
+    days: list[dt.date]
+    signals: list[BaselineSignalOut]
+    concurrent: list[int]
+    flag_z: float
+    min_concurrent: int
+    baseline_nights: int
+    min_baseline_nights: int
+
+
+class SevenHoursOut(BaseModel):
+    """Weekly share of nights with at least `floor_h` of sleep, and per night D the hours short of it over the last recorded nights."""
+
+    range: RangeOut
+    weeks: list[dt.date]
+    week_days: list[int]
+    week_nights: list[int]
+    week_share: Vec
+    days: list[dt.date]
+    shortfall: Vec
+    share: Num
+    shortfall_median: Num
+    floor_h: float
+    shortfall_nights: int
+
+
 class EcgSummaryOut(BaseModel):
     id: str
     recorded_at: dt.datetime

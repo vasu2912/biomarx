@@ -196,3 +196,25 @@ def chronotype(nights: Nights, weekday: np.ndarray) -> dict:
         "msfsc": msfsc,
         "social_jetlag_min": abs(msf - msw) * 60,
     }
+
+
+# Watson NF et al. Recommended amount of sleep for a healthy adult. Sleep 2015;38:843–844: 7 h or more, a population floor.
+SLEEP_FLOOR_H = 7.0
+SHORTFALL_NIGHTS = 14
+
+
+def shortfall(tst: np.ndarray, floor: float = SLEEP_FLOOR_H, nights: int = SHORTFALL_NIGHTS) -> np.ndarray:
+    """Per recorded night, hours short of `floor` summed over it and the `nights` − 1 recorded nights before it."""
+    short = np.maximum(0.0, floor - np.asarray(tst, dtype=float))
+    c = np.r_[0.0, np.cumsum(short)]
+    out = np.full(short.size, np.nan)
+    out[nights - 1 :] = c[nights:] - c[: short.size - nights + 1]
+    return out
+
+
+def floor_share(lo: np.ndarray, hi: np.ndarray, night: np.ndarray, tst: np.ndarray, floor: float = SLEEP_FLOOR_H) -> tuple[np.ndarray, np.ndarray]:
+    """Nights recorded and the percentage of them at or above `floor`, per bin of days [lo[k], hi[k])."""
+    n = np.array([((night >= a) & (night < b)).sum() for a, b in zip(lo, hi, strict=True)], dtype=int)
+    met = np.array([((night >= a) & (night < b) & (tst >= floor)).sum() for a, b in zip(lo, hi, strict=True)], dtype=int)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return n, np.where(n > 0, met / n * 100, np.nan)

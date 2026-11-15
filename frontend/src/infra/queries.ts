@@ -79,6 +79,11 @@ export const useHrActivity = (r: Range) =>
 export const useFitness = (r: Range) =>
   useQuery({ queryKey: qk.analysis('fitness', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/fitness', { ...q(r), signal })), ...ranged })
 
+export const useBaseline = (r: Range) =>
+  useQuery({ queryKey: qk.analysis('baseline', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/baseline', { ...q(r), signal })), ...ranged })
+export const useSevenHours = (r: Range) =>
+  useQuery({ queryKey: qk.analysis('seven-hours', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/seven-hours', { ...q(r), signal })), ...ranged })
+
 export const useProfile = () =>
   useQuery({ queryKey: qk.profile, queryFn: ({ signal }) => unwrap(api.GET('/api/profile', { signal })), staleTime: Infinity })
 

@@ -1,9 +1,10 @@
 import { ChapterPage } from '@/app/ChapterPage'
 import { useObservatory } from '@/app/context'
 import { fixed } from '@/core/format'
-import { useDaily, useHrActivity, useNights } from '@/infra/queries'
+import { useBaseline, useDaily, useHrActivity, useNights } from '@/infra/queries'
 import { BAND_FIGURES, BandFigure, DAILY_KEYS } from './bands'
 import { DoseResponseFigure } from './DoseResponse'
+import { OffBaselineFigure } from './OffBaseline'
 import { RidgelineFigure } from './Ridgeline'
 
 export default function Page() {
@@ -11,6 +12,7 @@ export default function Page() {
   const daily = useDaily(range, DAILY_KEYS)
   const nights = useNights(range)
   const hra = useHrActivity(range)
+  const base = useBaseline(range)
   const nNights = nights.data?.nights.length
 
   return (
@@ -27,6 +29,7 @@ export default function Page() {
       ))}
       <DoseResponseFigure data={hra.data} fetching={hra.isPlaceholderData} />
       <RidgelineFigure data={hra.data} fetching={hra.isPlaceholderData} />
+      <OffBaselineFigure data={base.data} registry={registry} fetching={base.isPlaceholderData} />
     </ChapterPage>
   )
 }

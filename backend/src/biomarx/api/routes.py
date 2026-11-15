@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from biomarx.api import schemas as s
 from biomarx.container import Container
+from biomarx.core.analysis import baseline, sleep
 from biomarx.core.metrics import DAILY_KEYS, METRICS
 from biomarx.core.services.imports import CHUNK_SIZE, ImportConflict, ImportRejected
 from biomarx.core.services.insights import InsightService, RasterName, Window
@@ -291,6 +292,43 @@ def fitness(ins: Ins, w: Win, c: Annotated[Container, Depends(container)]) -> s.
         age=p.age,
         sex=sex,
         steps_bands=[s.StepBandOut(label=label, lo=lo, hi=hi) for label, lo, hi in f["step_bands"]],
+    )
+
+
+@router.get("/analysis/baseline")
+def night_baseline(ins: Ins, w: Win) -> s.BaselineOut:
+    b = ins.baseline(w)
+    return s.BaselineOut(
+        range=_range(w),
+        days=ins.days(w),
+        signals=[
+            s.BaselineSignalOut(key=k, concern=b["concerns"][k], value=s.vec(v), median=s.vec(m), scale=s.vec(sc), z=s.vec(z, 2))
+            for k, (v, m, sc, z) in b["signals"].items()
+        ],
+        concurrent=[int(x) for x in b["concurrent"]],
+        flag_z=baseline.FLAG_Z,
+        min_concurrent=baseline.MIN_CONCURRENT,
+        baseline_nights=baseline.BASELINE_NIGHTS,
+        min_baseline_nights=baseline.MIN_BASELINE_NIGHTS,
+    )
+
+
+@router.get("/analysis/seven-hours")
+def seven_hours(ins: Ins, w: Win) -> s.SevenHoursOut:
+    f = ins.seven_hours(w)
+    wk = f["weeks"]
+    return s.SevenHoursOut(
+        range=_range(w),
+        weeks=wk.monday,
+        week_days=[int(x) for x in wk.hi - wk.lo],
+        week_nights=[int(x) for x in f["week_nights"]],
+        week_share=s.vec(f["week_share"], 1),
+        days=ins.days(w),
+        shortfall=s.vec(f["shortfall"], 2),
+        share=s.num(f["share"], 1),
+        shortfall_median=s.num(f["shortfall_median"], 2),
+        floor_h=sleep.SLEEP_FLOOR_H,
+        shortfall_nights=sleep.SHORTFALL_NIGHTS,
     )
 
 

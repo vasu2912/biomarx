@@ -3,6 +3,7 @@ import { Actogram } from './Actogram'
 import { Architecture } from './Architecture'
 import { BAND_FIGURES, BandFigure } from './Bands'
 import { Chronotype } from './Chronotype'
+import { SevenHours } from './SevenHours'
 
 export default function Page() {
   return (
@@ -21,6 +22,7 @@ export default function Page() {
       <Architecture />
       <Chronotype />
       <BandFigure spec={BAND_FIGURES.regularity} />
+      <SevenHours />
     </ChapterPage>
   )
 }

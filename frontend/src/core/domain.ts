@@ -25,6 +25,9 @@ export type Fitness = S['FitnessOut']
 export type Workout = S['WorkoutOut']
 export type Profile = S['ProfileOut']
 export type ProfileInput = S['ProfileIn']
+export type Baseline = S['BaselineOut']
+export type BaselineSignal = S['BaselineSignalOut']
+export type SevenHours = S['SevenHoursOut']
 
 export type Column = (number | null)[]
 

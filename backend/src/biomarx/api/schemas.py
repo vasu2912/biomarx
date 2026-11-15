@@ -357,6 +357,29 @@ class BaselineOut(BaseModel):
     min_baseline_nights: int
 
 
+class BeatToBeatOut(BaseModel):
+    """Per day of the range (night D): RMSSD from the beat lists inside the main episode, its natural log, the trailing
+    mean of ln RMSSD over `rolling_nights` (with at least `min_rolling_nights`), and the robust baseline of ln RMSSD over
+    the `baseline_nights` before it (`scale` is 1.4826 × MAD). `available` is false for a database imported before beat
+    lists were kept."""
+
+    range: RangeOut
+    days: list[dt.date]
+    available: bool
+    rmssd: Vec
+    ln_rmssd: Vec
+    mean7: Vec
+    median: Vec
+    scale: Vec
+    rolling_nights: int
+    min_rolling_nights: int
+    baseline_nights: int
+    min_baseline_nights: int
+    min_rr_ms: float
+    max_rr_ms: float
+    min_diffs: int
+
+
 class SevenHoursOut(BaseModel):
     """Weekly share of nights with at least `floor_h` of sleep, and per night D the hours short of it over the last recorded nights."""
 

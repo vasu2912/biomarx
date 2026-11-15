@@ -10,7 +10,7 @@ from typing import Literal
 
 import numpy as np
 
-from biomarx.core.analysis import activity, baseline, circadian, environment, exposures, fitness, patterns, provenance, sleep
+from biomarx.core.analysis import activity, baseline, circadian, environment, exposures, fitness, hrv, patterns, provenance, sleep
 from biomarx.core.analysis._np import nanmedian
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.ecg import analyse_ecg
@@ -231,6 +231,15 @@ class InsightService:
             series[key], concerns[key] = temp, concern
         out = {k: tuple(a[w.lo : w.hi] for a in (x, *baseline.trailing_robust_z(x))) for k, x in series.items()}
         return {"signals": out, "concerns": concerns, "concurrent": baseline.concurrent({k: v[3] for k, v in out.items()}, concerns)}
+
+    @memo
+    def beat_to_beat(self, w: Window) -> dict[str, np.ndarray]:
+        """Night ln RMSSD with its trailing 7-night mean and 28-night robust baseline, both of which may reach back before the range."""
+        d = self._derived()
+        ln = d.daily["ln_rmssd"]
+        med, scale, _ = baseline.trailing_robust_z(ln)
+        out = {"rmssd": d.daily["rmssd"], "ln_rmssd": ln, "mean7": hrv.trailing_mean(ln), "median": med, "scale": scale}
+        return {k: v[w.lo : w.hi] for k, v in out.items()}
 
     def _wrist_temperature(self) -> np.ndarray | None:
         """Sleeping wrist temperature per night D, or None when the export has none. Read once per dataset version."""

@@ -10,7 +10,7 @@ from typing import Literal
 
 import numpy as np
 
-from biomarx.core.analysis import activity, baseline, circadian, environment, exposures, fitness, patterns, sleep
+from biomarx.core.analysis import activity, baseline, circadian, environment, exposures, fitness, patterns, provenance, sleep
 from biomarx.core.analysis._np import nanmedian
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.ecg import analyse_ecg
@@ -330,6 +330,17 @@ class InsightService:
             iso_year, iso_week = environment.iso_weeks(d.grids.timeline.start, d.grids.timeline.days)
             self._memo[key] = {k: environment.season(d.daily[k], iso_year, iso_week) for k in environment.SEASON_KEYS}
         return self._memo[key]  # type: ignore[return-value]
+
+    def sources(self, w: Window) -> tuple[list[str], dict[str, np.ndarray]]:
+        """Sources ordered over the whole dataset, so a source keeps its color across ranges; codes per family for the range."""
+        key = ("sources", self._version)
+        if key not in self._memo:
+            tl = self._derived().grids.timeline
+            with self.store.records() as r:
+                best = {f.key: r.best_source_by_day(f.record_type, f.rule, tl.start) for f in provenance.FAMILIES}
+            self._memo[key] = provenance.source_codes(best, tl.days)
+        names, codes = self._memo[key]  # type: ignore[misc]
+        return names, {k: c[w.lo : w.hi] for k, c in codes.items()}
 
     # ------------------------------------------------------------------ ecg
 

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from biomarx.api import schemas as s
 from biomarx.container import Container
-from biomarx.core.analysis import baseline, environment, exposures, sleep
+from biomarx.core.analysis import baseline, environment, exposures, provenance, sleep
 from biomarx.core.metrics import DAILY_KEYS, METRICS
 from biomarx.core.services.imports import CHUNK_SIZE, ImportConflict, ImportRejected
 from biomarx.core.services.insights import InsightService, RasterName, Window
@@ -403,6 +403,17 @@ def light_and_sound(ins: Ins, w: Win) -> s.EnvironmentOut:
         seasons=[
             s.SeasonOut(key=k, median=s.vec(x.median, 3), q25=s.vec(x.q25, 3), q75=s.vec(x.q75, 3), years=x.years.tolist()) for k, x in ins.seasons().items()
         ],
+    )
+
+
+@router.get("/analysis/sources")
+def data_sources(ins: Ins, w: Win) -> s.SourcesOut:
+    names, codes = ins.sources(w)
+    return s.SourcesOut(
+        range=_range(w),
+        days=ins.days(w),
+        sources=names,
+        families=[s.SourceFamilyOut(key=f.key, label=f.label, source=[None if c < 0 else int(c) for c in codes[f.key]]) for f in provenance.FAMILIES],
     )
 
 

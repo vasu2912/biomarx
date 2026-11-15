@@ -379,6 +379,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Data Sources */
+        get: operations["data_sources_api_analysis_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecg": {
         parameters: {
             query?: never;
@@ -981,6 +998,30 @@ export interface components {
             floor_h: number;
             /** Shortfall Nights */
             shortfall_nights: number;
+        };
+        /** SourceFamilyOut */
+        SourceFamilyOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Source */
+            source: (number | null)[];
+        };
+        /**
+         * SourcesOut
+         * @description Per day of the range, the index into `sources` of the source that supplied each record family; null for none.
+         *
+         *     Sleep is by night D, the main episode that starts after noon on day D. `sources` is ordered by days supplied over the whole dataset.
+         */
+        SourcesOut: {
+            range: components["schemas"]["RangeOut"];
+            /** Days */
+            days: string[];
+            /** Sources */
+            sources: string[];
+            /** Families */
+            families: components["schemas"]["SourceFamilyOut"][];
         };
         /** StateOut */
         StateOut: {
@@ -1851,6 +1892,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvironmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    data_sources_api_analysis_sources_get: {
+        parameters: {
+            query?: {
+                /** @description First day, inclusive */
+                start?: string | null;
+                /** @description Last day, exclusive */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcesOut"];
                 };
             };
             /** @description Validation Error */

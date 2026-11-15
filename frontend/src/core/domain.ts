@@ -34,6 +34,7 @@ export type ExposureOutcome = S['ExposureOutcomeOut']
 export type GroupCell = S['GroupCellOut']
 export type Environment = S['EnvironmentOut']
 export type Season = S['SeasonOut']
+export type Sources = S['SourcesOut']
 
 export type Column = (number | null)[]
 

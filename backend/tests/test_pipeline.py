@@ -382,3 +382,18 @@ def test_environment_doses_sound_by_week_and_folds_the_year(client):
 
     m = client.get("/api/daily?metrics=morning_daylight").json()["columns"]["morning_daylight"]
     assert m[0] is None and m[1] == 4
+
+
+def test_sources_name_the_best_source_of_each_family_per_day(client):
+    band = "".join(
+        _rec("Quantity", "HeartRate", "Band", START + dt.timedelta(days=2, minutes=m), START + dt.timedelta(days=2, minutes=m), 60, "count/min")
+        for m in range(0, 1440)
+    )
+    steps = _rec("Quantity", "StepCount", "Phone", START + dt.timedelta(hours=9), START + dt.timedelta(hours=10), 9000, "count")
+    upload(client, synthetic_export(band + steps))
+    s = client.get("/api/analysis/sources").json()
+    fam = {f["key"]: [None if i is None else s["sources"][i] for i in f["source"]] for f in s["families"]}
+    assert [f["key"] for f in s["families"]] == ["hr", "sleep", "steps", "hrv", "spo2", "daylight"]
+    assert s["sources"][0] == "Watch" and len(s["days"]) == DAYS
+    assert fam["hr"][:4] == ["Watch", "Watch", "Band", "Watch"]  # 1,440 Band samples outnumber the Watch's 720 on day 2
+    assert fam["steps"][:2] == ["Phone", "Watch"] and fam["sleep"][0] == "Watch" and fam["hrv"] == [None] * DAYS

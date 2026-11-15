@@ -407,6 +407,24 @@ class EnvironmentOut(BaseModel):
     seasons: list[SeasonOut]
 
 
+class SourceFamilyOut(BaseModel):
+    key: str
+    label: str
+    source: list[int | None]
+
+
+class SourcesOut(BaseModel):
+    """Per day of the range, the index into `sources` of the source that supplied each record family; null for none.
+
+    Sleep is by night D, the main episode that starts after noon on day D. `sources` is ordered by days supplied over the whole dataset.
+    """
+
+    range: RangeOut
+    days: list[dt.date]
+    sources: list[str]
+    families: list[SourceFamilyOut]
+
+
 class EcgSummaryOut(BaseModel):
     id: str
     recorded_at: dt.datetime

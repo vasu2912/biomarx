@@ -24,6 +24,7 @@ import pyarrow as pa
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.fitness import Workouts
 from biomarx.core.analysis.grids import Grids, SleepSegments
+from biomarx.core.analysis.provenance import Rule
 from biomarx.core.analysis.sleep import Nights
 from biomarx.core.domain import Dataset, Sex, SleepCode, Timeline
 from biomarx.core.metrics import DAILY_KEYS
@@ -166,6 +167,22 @@ class DuckRecordReader:
             [origin, record_type],
         ).fetchnumpy()
         return np.asarray(r["m"], dtype=np.int64)
+
+    def best_source_by_day(self, record_type: str, rule: Rule, origin: dt.date) -> tuple[np.ndarray, np.ndarray]:
+        """Day index and the source that supplies it, by the same rules heart rate, steps and sleep are de-duplicated with."""
+        day, weight, cond = {
+            "count": ("start_ts::DATE", "count(*)", "value_num IS NOT NULL"),
+            "sum": ("start_ts::DATE", "sum(value_num)", "value_num IS NOT NULL"),
+            "staged": ("(start_ts - INTERVAL 12 HOUR)::DATE", "sum(datediff('second', start_ts, end_ts))", f"({STAGE_CASE}) IS NOT NULL"),
+        }[rule]
+        r = self.con.execute(
+            f"""SELECT datediff('day', ?::DATE, d) AS i, source FROM (
+                  SELECT d, source, row_number() OVER (PARTITION BY d ORDER BY w DESC, source DESC) AS r FROM (
+                    SELECT {day} AS d, source, {weight} AS w FROM records WHERE type = ? AND {cond} GROUP BY d, source))
+                WHERE r = 1""",
+            [origin, record_type],
+        ).fetchnumpy()
+        return np.asarray(r["i"], dtype=np.int64), np.asarray(r["source"], dtype=object)
 
 
 class DuckSink:

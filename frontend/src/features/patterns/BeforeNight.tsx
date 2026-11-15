@@ -11,7 +11,7 @@ import { useExposures } from '@/infra/queries'
 import { AX, useWidth, ValueAxis } from '@/ui/charts/axes'
 import { Figure, FigureSkeleton, Legend, type MethodNote } from '@/ui/charts/Figure'
 import { HoverCard } from '@/ui/charts/HoverCard'
-import { EmptyState, Segmented } from '@/ui/primitives'
+import { EmptyState, Segmented, Select } from '@/ui/primitives'
 import { ALPHA, binnedMedian, formatQ, formatRho, type Pt } from './model'
 import { DOT, robustDomain, tickFormat, TREND } from './PairScatter'
 
@@ -30,11 +30,82 @@ const NIGHTS_AFTER: Record<string, { subject: string; groups: string[] }> = {
   hard_workout_timing: { subject: 'a hard workout', groups: ['', 'ending more than 3 h before sleep', 'ending 1 to 3 h before sleep', 'ending within 1 h of sleep'] },
 }
 
+/** Yes/no exposures name both sides in full: the nights after, and the nights they are set against. */
+const YES_NO: Record<string, { after: string; ref: string }> = {
+  alcohol_logged: { after: 'after a day with drinks logged', ref: 'after a day with no drinks logged' },
+  caffeine_logged: { after: 'after caffeine within 8 h of sleep', ref: 'after earlier or no caffeine' },
+}
+
+function yesNo(e: Exposure) {
+  if (e.source === 'journal') return { after: `after a day tagged “${e.label}”`, ref: 'after a reviewed day without it' }
+  return YES_NO[e.key]
+}
+
+const refNights = (e: Exposure) => yesNo(e)?.ref ?? `with ${lower(e.groups[0].label)}`
+
+/** The exposure picker’s menu: what the watch can’t see, from your journal and from food and drink you logged in Health. */
+const MENU_GROUPS = { journal: 'From your journal', logs: 'From Health logs' } as const
+
 const BH = 'Benjamini Y, Hochberg Y. J R Stat Soc B 1995;57:289–300.'
 const CITE: Record<string, string> = {
   workout_timing: `Background: Stutz J et al. Effects of evening exercise on sleep in healthy participants: a systematic review and meta-analysis. Sports Med 2019;49:269–287. ${BH}`,
   hard_workout_timing: `Background: Stutz J et al. Sports Med 2019;49:269–287. Training load: Morton RH, Fitz-Clarke JR, Banister EW. J Appl Physiol 1990;69:1171–1177. ${BH}`,
   morning_daylight: `Background: Burns AC et al. Day and night light exposure are associated with psychiatric disorders. Nat Ment Health 2023; Wright KP Jr et al. Entrainment of the human circadian clock to the natural light-dark cycle. Curr Biol 2013;23:1554–1558. ${BH}`,
+  alcohol_logged: `Background: Pietilä J et al. Acute effect of alcohol intake on cardiovascular autonomic regulation during the first hours of sleep in a large real-world sample of Finnish employees. JMIR Ment Health 2018;5:e23; Ebrahim IO et al. Alcohol and sleep I: effects on normal sleep. Alcohol Clin Exp Res 2013;37:539–549. ${BH}`,
+  caffeine_logged: `Background: Gardiner C et al. The effect of caffeine on subsequent sleep: a systematic review and meta-analysis. Sleep Med Rev 2023;69:101764; Drake C et al. Caffeine effects on sleep taken 0, 3, or 6 hours before going to bed. J Clin Sleep Med 2013;9:1195–1200. ${BH}`,
+}
+
+const LOGGED_NOTE = (
+  <p>
+    A missing log is not proof of none, so a night counts as a reference night only when day D has some other food or drink log in Health, or you reviewed day D in
+    your journal without the matching tag. Nights with a log inside the sleep itself are left out.
+  </p>
+)
+
+function exposureWhat(e: Exposure) {
+  if (e.key === 'morning_daylight')
+    return (
+      <p>
+        Morning daylight is the minutes of time in daylight the watch logged in the first two hours after the wake time that began day D, the end of the night before. A sample that
+        straddles the edge counts for the share of it inside. A morning counts only when the watch that logs daylight was worn for at least half of those two hours, so a morning
+        spent without it is missing rather than zero.
+      </p>
+    )
+  if (e.source === 'journal')
+    return (
+      <p>
+        Night D is the main sleep episode that starts after noon on day D. It is grouped by your journal entry for day D: tagged if day D carries “{e.label}”, not tagged if you
+        reviewed day D without it. Days you haven’t reviewed are left out, so a missing entry never counts as a no. Tags are your own record.
+      </p>
+    )
+  if (e.key === 'alcohol_logged')
+    return (
+      <>
+        <p>
+          Night D is the main sleep episode that starts after noon on day D. It counts as a night after drinks when Health has alcoholic drinks logged after midnight on day D (or
+          after waking, if later) and before that night’s sleep.
+        </p>
+        {LOGGED_NOTE}
+      </>
+    )
+  if (e.key === 'caffeine_logged')
+    return (
+      <>
+        <p>
+          Night D is the main sleep episode that starts after noon on day D. It counts as a night after late caffeine when the last caffeine logged in Health after midnight on day D
+          (or after waking, if later) was within 8 h of that night’s sleep onset; caffeine logged only earlier, or none, sets the reference.
+        </p>
+        {LOGGED_NOTE}
+      </>
+    )
+  return (
+    <p>
+      Night D is the main sleep episode that starts after noon on day D. Its workouts are those that ended after midnight on day D (or after waking, if later) and before that
+      night’s sleep. The night is grouped by the gap from the last one’s end to sleep onset; nights with no workout at all are the reference.
+      {e.key === 'hard_workout_timing' &&
+        ' Only workouts whose Banister training load reached your median workout load count as hard; a night with workouts but no hard one is left out.'}
+    </p>
+  )
 }
 
 function exposureNote(e: Exposure, d: Exposures): MethodNote {
@@ -42,20 +113,7 @@ function exposureNote(e: Exposure, d: Exposures): MethodNote {
   return {
     body: (
       <>
-        {e.key === 'morning_daylight' ? (
-          <p>
-            Morning daylight is the minutes of time in daylight the watch logged in the first two hours after the wake time that began day D, the end of the night before. A sample that
-            straddles the edge counts for the share of it inside. A morning counts only when the watch that logs daylight was worn for at least half of those two hours, so a morning
-            spent without it is missing rather than zero.
-          </p>
-        ) : (
-          <p>
-            Night D is the main sleep episode that starts after noon on day D. Its workouts are those that ended after midnight on day D (or after waking, if later) and before that
-            night’s sleep. The night is grouped by the gap from the last one’s end to sleep onset; nights with no workout at all are the reference.
-            {e.key === 'hard_workout_timing' &&
-              ' Only workouts whose Banister training load reached your median workout load count as hard; a night with workouts but no hard one is left out.'}
-          </p>
-        )}
+        {exposureWhat(e)}
         {groups ? (
           <p>
             Each group is compared with the reference by the difference in medians, with a 95% interval from {d.resamples.toLocaleString('en-US')} bootstrap resamples of each group
@@ -68,7 +126,11 @@ function exposureNote(e: Exposure, d: Exposures): MethodNote {
         <p>
           The p-values of every {groups ? 'group and measure' : 'measure'} are adjusted together with the Benjamini–Hochberg procedure; a dot marks a false discovery rate q below 0.05.
         </p>
-        <p>These are associations between your own nights, not causes: a day with a late workout or a sunny morning can differ from other days in many ways at once.</p>
+        {e.source === 'watch' ? (
+          <p>These are associations between your own nights, not causes: a day with a late workout or a sunny morning can differ from other days in many ways at once.</p>
+        ) : (
+          <p>These are associations between your own nights, not causes: a day you tagged or logged can differ from other days in many ways at once.</p>
+        )}
       </>
     ),
     cite: CITE[e.key] ?? BH,
@@ -95,13 +157,13 @@ function reading(e: Exposure, d: Exposures, registry: Registry) {
         if (sig(c.q) && (!best || c.q! < best.c.q!)) best = { o, g, c }
       })
     if (!tested) return `No group has ${d.min_group} nights in this range to compare.`
-    if (!best) return `None of the ${tested} differences against nights with ${lower(e.groups[0].label)} pass the false discovery threshold in this range.`
+    if (!best) return `None of the ${tested} differences against nights ${refNights(e)} pass the false discovery threshold in this range.`
     const { o, g, c } = best as { o: ExposureOutcome; g: number; c: GroupCell }
     const m = def(registry, o.key)
     const words = NIGHTS_AFTER[e.key]
-    const after = words ? `after ${words.subject} ${words.groups[g]}` : `in “${e.groups[g].label}”`
+    const after = words ? `after ${words.subject} ${words.groups[g]}` : (yesNo(e)?.after ?? `in “${e.groups[g].label}”`)
     const ref = o.cells[0]
-    return `${o.label} was ${moved(m, c.diff!)} on nights ${after} than on nights with ${lower(e.groups[0].label)} (95% CI ${formatDelta(m, c.ci_lo!)} to ${formatDelta(m, c.ci_hi!)}, ${formatQ(c.q)}; ${c.n} and ${ref.n} nights).`
+    return `${o.label} was ${moved(m, c.diff!)} on nights ${after} than on nights ${refNights(e)} (95% CI ${formatDelta(m, c.ci_lo!)} to ${formatDelta(m, c.ci_hi!)}, ${formatQ(c.q)}; ${c.n} and ${ref.n} nights).`
   }
   const rows = d.outcomes.filter((o) => isNum(o.correlation?.rho))
   if (!rows.length) return `Fewer than ${d.min_paired} nights in this range have ${lower(e.label)} to correlate.`
@@ -127,7 +189,23 @@ export function BeforeNightFigure({ range, registry }: { range: Range; registry:
       reading={ready ? reading(e, d, registry) : undefined}
       legend={
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <Segmented value={d.key} onChange={setPicked} options={d.catalogue.map((x) => ({ value: x.key, label: x.label }))} label="Exposure" size="sm" />
+          <div className="flex flex-wrap items-center gap-2">
+            <Segmented
+              value={d.key}
+              onChange={setPicked}
+              options={d.catalogue.filter((x) => x.source === 'watch').map((x) => ({ value: x.key, label: x.label }))}
+              label="Exposure from the watch"
+              size="sm"
+            />
+            <Select
+              value={e.source === 'watch' ? null : d.key}
+              onChange={setPicked}
+              options={d.catalogue.flatMap((x) => (x.source === 'watch' ? [] : [{ value: x.key, label: x.label, group: MENU_GROUPS[x.source] }]))}
+              label="Exposure from your journal or Health logs"
+              placeholder="Journal or Health logs"
+              size="sm"
+            />
+          </div>
           {ready && (
             <Legend
               items={

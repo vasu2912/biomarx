@@ -159,6 +159,15 @@ class DuckRecordReader:
         ).fetchnumpy()
         return Workouts(np.asarray(r["activity"], dtype=object), np.asarray(r["a"], dtype=np.int64), np.asarray(r["b"], dtype=np.int64))
 
+    def food_log_starts(self, origin: dt.date) -> np.ndarray:
+        """Start minute of every food or drink log: any dietary type, and alcoholic drinks."""
+        r = self.con.execute(
+            """SELECT datediff('minute', ?::TIMESTAMP, start_ts) AS m FROM records
+               WHERE (type LIKE 'Dietary%' OR type = 'NumberOfAlcoholicBeverages') AND start_ts IS NOT NULL""",
+            [origin],
+        ).fetchnumpy()
+        return np.asarray(r["m"], dtype=np.int64)
+
     def heart_rate_minutes_of_sources(self, record_type: str, origin: dt.date) -> np.ndarray:
         """Minute indices with a heart-rate sample from a source that has logged `record_type`: when that device was on the wrist."""
         r = self.con.execute(

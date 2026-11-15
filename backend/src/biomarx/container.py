@@ -10,10 +10,12 @@ from biomarx.core.ports import JobRunner
 from biomarx.core.services.derivation import rederive
 from biomarx.core.services.imports import ImportService
 from biomarx.core.services.insights import InsightService
+from biomarx.core.services.journal import JournalService
 from biomarx.core.services.profile import ProfileService
 from biomarx.impl.apple_health import AppleHealthReader
 from biomarx.impl.duckdb_store import DuckStore
 from biomarx.impl.jobs import MemoryJobRegistry, ThreadJobRunner
+from biomarx.impl.journal import FileJournalStore
 from biomarx.impl.profile import FileProfileOverrides
 from biomarx.impl.uploads import FileUploadStore
 
@@ -28,6 +30,7 @@ class Container:
     insights: InsightService
     profile: ProfileService
     runner: JobRunner
+    journal: JournalService
 
 
 def build(settings: Settings, runner: JobRunner | None = None) -> Container:
@@ -37,7 +40,8 @@ def build(settings: Settings, runner: JobRunner | None = None) -> Container:
     runner = runner or ThreadJobRunner()
     imports = ImportService(store, AppleHealthReader(), uploads, MemoryJobRegistry(), runner)
     profile = ProfileService(store, FileProfileOverrides(settings.data_dir / "profile.json"))
-    return Container(settings, store, imports, InsightService(store), profile, runner)
+    journal = JournalService(FileJournalStore(settings.data_dir / "journal.json"))
+    return Container(settings, store, imports, InsightService(store), profile, runner, journal)
 
 
 def start_rederive(c: Container) -> None:

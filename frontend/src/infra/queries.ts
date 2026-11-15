@@ -1,5 +1,5 @@
 import { keepPreviousData, queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ProfileInput, Range } from '@/core/domain'
+import type { Journal, JournalDay, ProfileInput, Range } from '@/core/domain'
 import { api, rangeQuery, unwrap } from './http'
 import { fetchRaster, type RasterName } from './raster'
 
@@ -18,6 +18,7 @@ export const qk = {
   analysis: (name: string, r: Range) => ['data', 'analysis', name, rk(r)] as const,
   ecgList: ['data', 'ecg'] as const,
   ecg: (id: string) => ['data', 'ecg', id] as const,
+  journal: (r: Range) => ['journal', rk(r)] as const,
 }
 
 /** Range-keyed data never goes stale (a re-import invalidates `data`); a new range keeps the old frame while loading. */
@@ -110,6 +111,63 @@ export function useSaveProfile() {
       void client.invalidateQueries({ queryKey: ['data', 'analysis', 'fitness'] })
       void client.invalidateQueries({ queryKey: ['data', 'analysis', 'exposures'] })
     },
+  })
+}
+
+export const useJournal = (r: Range) =>
+  useQuery({ queryKey: qk.journal(r), queryFn: ({ signal }) => unwrap(api.GET('/api/journal', { ...q(r), signal })), ...ranged })
+
+/** A day's entry in every cached range that holds it, kept in date order; an unreviewed day leaves the list. */
+function placeDay(j: Journal, key: readonly unknown[], day: JournalDay): Journal {
+  const [start, end] = String(key[1]).split('..')
+  if (day.date < start || day.date >= end) return j
+  const days = j.days.filter((d) => d.date !== day.date)
+  if (day.answered) days.push(day)
+  days.sort((a, b) => (a.date < b.date ? -1 : 1))
+  return { ...j, days }
+}
+
+/** Refetch once the last queued edit lands, so a refetch never overwrites an edit still on its way. */
+const journalChanged = (client: ReturnType<typeof useQueryClient>) => {
+  if (client.isMutating({ mutationKey: ['journal'] }) > 1) return
+  void client.invalidateQueries({ queryKey: ['journal'] })
+  void client.invalidateQueries({ queryKey: ['data', 'analysis', 'exposures'] })
+}
+
+/**
+ * Replace one day's entry. The calendar shows it at once and puts it back if the server refuses; edits run one at a time so
+ * the last one made is the one kept. The night comparisons read the journal, so they are refetched after.
+ */
+export function useSaveJournalDay() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationKey: ['journal'],
+    scope: { id: 'journal' },
+    mutationFn: (day: JournalDay) => unwrap(api.PUT('/api/journal/{day}', { params: { path: { day: day.date } }, body: { tags: day.tags, answered: day.answered } })),
+    onMutate: async (day) => {
+      await client.cancelQueries({ queryKey: ['journal'] })
+      const before = client.getQueriesData<Journal>({ queryKey: ['journal'] })
+      for (const [key, j] of before) if (j) client.setQueryData(key, placeDay(j, key, day))
+      return { before }
+    },
+    onError: (_e, _day, ctx) => {
+      for (const [key, j] of ctx?.before ?? []) client.setQueryData(key, j)
+    },
+    onSettled: () => journalChanged(client),
+  })
+}
+
+export function useAddJournalTag() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationKey: ['journal'],
+    scope: { id: 'journal' },
+    mutationFn: (label: string) => unwrap(api.POST('/api/journal/tags', { body: { label } })),
+    onSuccess: (tag) => {
+      for (const [key, j] of client.getQueriesData<Journal>({ queryKey: ['journal'] }))
+        if (j && !j.tags.some((t) => t.key === tag.key)) client.setQueryData(key, { ...j, tags: [...j.tags, tag] })
+    },
+    onSettled: () => journalChanged(client),
   })
 }
 

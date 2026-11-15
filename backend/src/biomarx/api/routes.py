@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from biomarx.api import schemas as s
 from biomarx.container import Container
 from biomarx.core.analysis import baseline, environment, exposures, provenance, sleep
+from biomarx.core.journal import JournalError
 from biomarx.core.metrics import DAILY_KEYS, METRICS
 from biomarx.core.services.imports import CHUNK_SIZE, ImportConflict, ImportRejected
 from biomarx.core.services.insights import InsightService, RasterName, Window
@@ -121,6 +122,56 @@ def get_profile(c: Annotated[Container, Depends(container)]) -> s.ProfileOut:
 @router.put("/profile", responses={422: {"model": s.ErrorOut}})
 def put_profile(body: s.ProfileIn, c: Annotated[Container, Depends(container)]) -> s.ProfileOut:
     return s.ProfileOut.of(c.profile.set(body.birth_date, body.sex))
+
+
+# ---------------------------------------------------------------- journal
+
+JOURNAL_ERRORS = {422: {"model": s.ErrorOut}}
+
+
+@router.get("/journal", responses=JOURNAL_ERRORS)
+def get_journal(
+    c: Annotated[Container, Depends(container)],
+    start: Annotated[dt.date | None, Query(description="First day, inclusive")] = None,
+    end: Annotated[dt.date | None, Query(description="Last day, exclusive")] = None,
+) -> s.JournalOut:
+    if start and end and end <= start:
+        raise HTTPException(422, "end must be after start.")
+    return s.JournalOut.of(c.journal.get(), start, end)
+
+
+@router.put("/journal/{day}", responses=JOURNAL_ERRORS)
+def put_journal_day(day: dt.date, body: s.JournalDayIn, c: Annotated[Container, Depends(container)]) -> s.JournalDayOut:
+    """Replace one day's entry. The same body twice leaves the same journal."""
+    try:
+        j = c.journal.set_day(day, frozenset(body.tags), body.answered)
+    except JournalError as e:
+        raise HTTPException(422, str(e)) from e
+    return s.JournalDayOut.of(day, j.day(day))
+
+
+@router.get("/journal/tags")
+def journal_tags(c: Annotated[Container, Depends(container)]) -> list[s.JournalTagOut]:
+    return [s.JournalTagOut.of(t) for t in c.journal.get().tags]
+
+
+@router.post("/journal/tags", responses=JOURNAL_ERRORS)
+def add_journal_tag(body: s.JournalTagIn, c: Annotated[Container, Depends(container)]) -> s.JournalTagOut:
+    """Add a tag of your own. Adding a label that is already there returns that tag."""
+    try:
+        return s.JournalTagOut.of(c.journal.add_tag(body.label))
+    except JournalError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@router.delete("/journal/tags/{key}", status_code=204, responses=JOURNAL_ERRORS)
+def remove_journal_tag(key: str, c: Annotated[Container, Depends(container)]) -> Response:
+    """Remove a tag of your own from the list and from every day; the days stay reviewed. Removing it again does nothing."""
+    try:
+        c.journal.remove_tag(key)
+    except JournalError as e:
+        raise HTTPException(422, str(e)) from e
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------- tables
@@ -339,12 +390,14 @@ def night_exposures(
     c: Annotated[Container, Depends(container)],
     key: Annotated[str | None, Query(description="Exposure key; the first available one when omitted")] = None,
 ) -> s.ExposuresOut:
-    if key is not None and key not in exposures.EXPOSURES:
+    j = c.journal.get()
+    every = exposures.catalogue(j)
+    if key is not None and key not in every:
         raise HTTPException(422, f"Unknown exposure: {key}.")
     p = c.profile.get()
     sex = p.sex if p.sex in ("male", "female") else None
-    reasons = ins.exposure_catalogue(p.age, sex)
-    key = key or next((k for k, r in reasons.items() if r is None), next(iter(exposures.EXPOSURES)))
+    reasons = ins.exposure_catalogue(p.age, sex, j)
+    key = key or next((k for k, r in reasons.items() if r is None), next(iter(every)))
     catalogue = [
         s.ExposureOut(
             key=x.key,
@@ -354,13 +407,14 @@ def night_exposures(
             unit=x.unit,
             available=reasons[x.key] is None,
             reason=reasons[x.key],
+            source=x.source,
         )
-        for x in exposures.EXPOSURES.values()
+        for x in every.values()
     ]
     head = dict(range=_range(w), catalogue=catalogue, key=key, min_group=exposures.MIN_GROUP, min_paired=exposures.MIN_PAIRED, resamples=exposures.RESAMPLES)
     if reasons[key] is not None:
         return s.ExposuresOut(**head, outcomes=[], nights=[], exposure=[], columns={})
-    e = ins.exposure(w, key, p.age, sex)
+    e = ins.exposure(w, key, p.age, sex, j)
     n, st = e["nights"], e["stats"]
 
     def outcome(o: exposures.Outcome) -> s.ExposureOutcomeOut:

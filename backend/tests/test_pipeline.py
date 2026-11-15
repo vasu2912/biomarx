@@ -397,3 +397,53 @@ def test_sources_name_the_best_source_of_each_family_per_day(client):
     assert s["sources"][0] == "Watch" and len(s["days"]) == DAYS
     assert fam["hr"][:4] == ["Watch", "Watch", "Band", "Watch"]  # 1,440 Band samples outnumber the Watch's 720 on day 2
     assert fam["steps"][:2] == ["Phone", "Watch"] and fam["sleep"][0] == "Watch" and fam["hrv"] == [None] * DAYS
+
+
+def test_put_is_idempotent_and_the_journal_survives_reimport(client):
+    upload(client, synthetic_export())
+    day = (START + dt.timedelta(days=4)).date().isoformat()
+    body = {"tags": ["alcohol", "stress"], "answered": True}
+    first = client.put(f"/api/journal/{day}", json=body)
+    assert first.status_code == 200 and first.json() == {"date": day, "tags": ["alcohol", "stress"], "answered": True}
+    snapshot = client.get("/api/journal").json()
+    assert client.put(f"/api/journal/{day}", json=body).json() == first.json()
+    assert client.get("/api/journal").json() == snapshot
+
+    upload(client, synthetic_export())
+    assert client.get("/api/journal").json() == snapshot
+    assert client.get(f"/api/journal?start={day}&end={day}").status_code == 422
+    assert client.get("/api/journal?start=2026-03-07").json()["days"] == []
+
+    tomorrow = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+    assert client.put(f"/api/journal/{tomorrow}", json=body).status_code == 422
+    assert client.put(f"/api/journal/{day}", json={"tags": ["nope"]}).json() == {"detail": "Unknown tag: nope."}
+
+
+def test_tags_api_adds_once_and_removes_idempotently(client):
+    a = client.post("/api/journal/tags", json={"label": "Nap"}).json()
+    assert a["custom"] and client.post("/api/journal/tags", json={"label": "nap"}).json() == a
+    assert [t["key"] for t in client.get("/api/journal/tags").json()][-1] == a["key"]
+    assert client.delete(f"/api/journal/tags/{a['key']}").status_code == 204
+    assert client.delete(f"/api/journal/tags/{a['key']}").status_code == 204
+    assert client.delete("/api/journal/tags/alcohol").status_code == 422
+    assert client.post("/api/journal/tags", json={"label": "x" * 25}).status_code == 422
+
+
+def test_journal_exposures_group_the_nights_after_tagged_days(client):
+    upload(client, synthetic_export())
+    e = client.get("/api/analysis/exposures").json()
+    cat = {c["key"]: c for c in e["catalogue"]}
+    assert e["key"] == "workout_timing" and cat["workout_timing"]["source"] == "watch"
+    assert cat["tag:alcohol"]["source"] == "journal" and "Nothing is in your journal" in cat["tag:alcohol"]["reason"]
+    assert cat["alcohol_logged"]["source"] == "logs" and "no alcoholic-drink logs" in cat["alcohol_logged"]["reason"]
+
+    for i in range(12):
+        day = (START + dt.timedelta(days=i)).date().isoformat()
+        client.put(f"/api/journal/{day}", json={"tags": ["alcohol"] if i % 2 else [], "answered": True})
+    e = client.get("/api/analysis/exposures?key=tag:alcohol").json()
+    assert next(c for c in e["catalogue"] if c["key"] == "tag:alcohol")["available"]
+    assert [g["label"] for g in next(c for c in e["catalogue"] if c["key"] == "tag:alcohol")["groups"]] == ["Not tagged", "Tagged"]
+    reviewed = [x for x in e["exposure"] if x is not None]
+    assert reviewed.count(1) == 6 and reviewed.count(0) == 6 and len(e["exposure"]) > 12
+    tst = next(o for o in e["outcomes"] if o["key"] == "tst")
+    assert tst["cells"][0]["n"] == 6 and tst["cells"][1]["n"] == 6 and tst["cells"][1]["diff"] == 0

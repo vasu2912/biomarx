@@ -9,6 +9,7 @@ Mann–Whitney U p; continuous: Spearman rho. Benjamini–Hochberg adjusts the p
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal, Protocol
@@ -19,8 +20,12 @@ from scipy import stats
 from biomarx.core.analysis.fitness import Workouts
 from biomarx.core.analysis.sleep import Nights
 from biomarx.core.domain import MINUTES_PER_DAY
+from biomarx.core.journal import CATALOGUE, Journal, Tag
 
 Kind = Literal["groups", "continuous"]
+# Where an exposure comes from. Anything not from the watch reads the journal, so it changes without a new import.
+Source = Literal["watch", "journal", "logs"]
+SOURCES: tuple[Source, ...] = ("watch", "journal", "logs")
 
 MIN_GROUP = 5
 MIN_PAIRED = 10
@@ -71,10 +76,21 @@ class Daylight:
     measured: np.ndarray  # bool per grid minute
 
 
+@dataclass(frozen=True)
+class Logs:
+    """Apple Health food and drink logs as grid minutes: drinks and caffeine with their values, and the start of every log."""
+
+    drinks: tuple[np.ndarray, np.ndarray]
+    caffeine: tuple[np.ndarray, np.ndarray]
+    any_log: np.ndarray
+
+
 class Inputs(Protocol):
     """What exposures read. Values are fetched lazily, so an exposure only pays for what it uses."""
 
     nights: Nights
+    origin: dt.date  # the calendar day of grid day 0
+    journal: Journal
 
     def workouts(self) -> Workouts: ...
     def workout_trimp(self) -> np.ndarray:
@@ -82,6 +98,7 @@ class Inputs(Protocol):
         ...
 
     def daylight(self) -> Daylight: ...
+    def logs(self) -> Logs: ...
 
 
 @dataclass(frozen=True)
@@ -93,6 +110,7 @@ class Exposure:
     values: Callable[[Inputs], np.ndarray]
     groups: tuple[Group, ...] = ()
     unit: str = ""
+    source: Source = "watch"
 
 
 # ---------------------------------------------------------------- workout timing
@@ -206,15 +224,139 @@ def _morning_daylight(src: Inputs) -> np.ndarray:
     return morning_daylight(src.nights, light)
 
 
+# ---------------------------------------------------------------- the journal
+
+TAG_GROUPS: tuple[Group, ...] = (Group("Not tagged", "No tag"), Group("Tagged", "Tagged"))
+
+
+def reviewed_tags(nights: Nights, journal: Journal, origin: dt.date) -> list[tuple[str, ...] | None]:
+    """Per night D, the journal's tags for day D, or None when day D was not reviewed."""
+    return [journal.day(origin + dt.timedelta(days=int(n))) for n in nights.night]
+
+
+def tag_groups(nights: Nights, journal: Journal, origin: dt.date, key: str) -> np.ndarray:
+    """1 when day D carries the tag, 0 when day D was reviewed without it, nothing when day D was not reviewed."""
+    return np.array([np.nan if t is None else float(key in t) for t in reviewed_tags(nights, journal, origin)])
+
+
+def need_both(codes: np.ndarray, what: str, other: str, note: str = "") -> np.ndarray:
+    """A yes/no exposure is only worth listing when both sides reach the minimum somewhere in the data."""
+    yes, no = int(np.sum(codes == 1)), int(np.sum(codes == 0))
+    if yes < MIN_GROUP or no < MIN_GROUP:
+        raise Unavailable(
+            f"{yes} {'night follows' if yes == 1 else 'nights follow'} {what} and {no} {other}; a comparison needs at least {MIN_GROUP} of each.{note}"
+        )
+    return codes
+
+
+def tag_exposure(tag: Tag) -> Exposure:
+    def values(src: Inputs) -> np.ndarray:
+        if not src.journal.days:
+            raise Unavailable("Nothing is in your journal yet. Review days in Fig. 5.5 to compare the nights after them.")
+        codes = tag_groups(src.nights, src.journal, src.origin, tag.key)
+        return need_both(codes, f"a day tagged “{tag.label}”", "a reviewed day without it")
+
+    return Exposure(f"tag:{tag.key}", tag.label, "groups", values, TAG_GROUPS, source="journal")
+
+
+# ---------------------------------------------------------------- food and drink logs
+
+# Absence of a log is not proof of none: a night is a reference night only when day D has some other food or drink log, or the
+# person reviewed day D in the journal without the matching tag.
+UNLOGGED_NOTE = " A day without a log counts as none only when it has another food or drink log, or you reviewed it in the journal."
+CAFFEINE_WINDOW_MIN = 8 * 60
+
+DRINK_GROUPS: tuple[Group, ...] = (Group("No drinks logged", "None"), Group("Any drinks", "Drinks"))
+CAFFEINE_GROUPS: tuple[Group, ...] = (Group("Earlier or none", "Early"), Group("Within 8 h of sleep", "< 8 h"))
+
+
+def vouched(nights: Nights, any_log: np.ndarray, tags: list[tuple[str, ...] | None], contradicts: str) -> np.ndarray:
+    """Per night D, whether day D can stand for "none": it has any food or drink log, or was reviewed without `contradicts`."""
+    days = np.unique(any_log // MINUTES_PER_DAY)
+    logged = np.isin(nights.night, days)
+    return logged | np.array([t is not None and contradicts not in t for t in tags], dtype=bool)
+
+
+def _windows(nights: Nights, start: np.ndarray, value: np.ndarray) -> tuple[list[np.ndarray], list[bool]]:
+    """Per night D, the start minutes of positive logs from midnight of day D (or waking, if later) to onset, and whether any
+    falls in the night itself."""
+    keep = value > 0
+    s = np.sort(start[keep])
+    lo = np.searchsorted(s, np.maximum(nights.night * MINUTES_PER_DAY, previous_wake(nights)), side="left")
+    on = np.searchsorted(s, nights.i0, side="left")
+    hi = np.searchsorted(s, nights.i1, side="left")
+    return [s[a:b] for a, b in zip(lo, on, strict=True)], (hi > on).tolist()
+
+
+def drink_groups(nights: Nights, drinks: tuple[np.ndarray, np.ndarray], ok: np.ndarray) -> np.ndarray:
+    """1 when drinks were logged on day D before onset; 0 when none were and day D is vouched for; nothing otherwise, and
+    nothing when drinks are logged during the night itself, since their timing against sleep is unclear."""
+    before, during = _windows(nights, *drinks)
+    out = np.full(len(nights), np.nan)
+    for k, (b, d) in enumerate(zip(before, during, strict=True)):
+        if b.size:
+            out[k] = 1
+        elif not d and ok[k]:
+            out[k] = 0
+    return out
+
+
+def caffeine_groups(nights: Nights, caffeine: tuple[np.ndarray, np.ndarray], ok: np.ndarray, window: int = CAFFEINE_WINDOW_MIN) -> np.ndarray:
+    """1 when the last caffeine logged on day D before onset was within `window` minutes of it; 0 when it was earlier, or none
+    was logged on a vouched-for day; nothing otherwise, or when caffeine is logged during the night itself."""
+    before, during = _windows(nights, *caffeine)
+    out = np.full(len(nights), np.nan)
+    for k, (b, d, onset) in enumerate(zip(before, during, nights.i0, strict=True)):
+        if d:
+            continue
+        if b.size and onset - b[-1] <= window:
+            out[k] = 1
+        elif b.size or ok[k]:
+            out[k] = 0
+    return out
+
+
+def _drinks(src: Inputs) -> np.ndarray:
+    logs = src.logs()
+    if logs.drinks[0].size == 0:
+        raise Unavailable("The export has no alcoholic-drink logs. Health keeps them when you log drinks in the Health app or an app that writes to it.")
+    ok = vouched(src.nights, logs.any_log, reviewed_tags(src.nights, src.journal, src.origin), "alcohol")
+    return need_both(drink_groups(src.nights, logs.drinks, ok), "a day with drinks logged", "a logged or reviewed day without", UNLOGGED_NOTE)
+
+
+def _caffeine(src: Inputs) -> np.ndarray:
+    logs = src.logs()
+    if logs.caffeine[0].size == 0:
+        raise Unavailable("The export has no caffeine logs. Health keeps them when you log caffeine in the Health app or an app that writes to it.")
+    ok = vouched(src.nights, logs.any_log, reviewed_tags(src.nights, src.journal, src.origin), "caffeine_pm")
+    return need_both(
+        caffeine_groups(src.nights, logs.caffeine, ok),
+        "a day with caffeine within 8 h of sleep",
+        "a logged or reviewed day with it earlier or not at all",
+        UNLOGGED_NOTE,
+    )
+
+
 # Burns AC et al. Nat Ment Health 2023. Wright KP Jr et al. Curr Biol 2013;23:1554–1558.
+# Pietilä J et al. JMIR Ment Health 2018;5:e23. Ebrahim IO et al. Alcohol Clin Exp Res 2013;37:539–549.
+# Gardiner C et al. Sleep Med Rev 2023;69:101764. Drake C et al. J Clin Sleep Med 2013;9:1195–1200.
 EXPOSURES: dict[str, Exposure] = {
     e.key: e
     for e in (
         Exposure("workout_timing", "After any workout", "groups", _all_workouts, TIMING_GROUPS),
         Exposure("hard_workout_timing", "After a hard workout", "groups", _hard_workouts, TIMING_GROUPS),
         Exposure("morning_daylight", "Morning daylight", "continuous", _morning_daylight, unit="min"),
+        *(tag_exposure(t) for t in CATALOGUE),
+        Exposure("alcohol_logged", "Alcoholic drinks", "groups", _drinks, DRINK_GROUPS, source="logs"),
+        Exposure("caffeine_logged", "Late caffeine", "groups", _caffeine, CAFFEINE_GROUPS, source="logs"),
     )
 }
+
+
+def catalogue(journal: Journal) -> dict[str, Exposure]:
+    """Every exposure, with one for each of the person's own tags, ordered watch, journal, logs."""
+    every = [*EXPOSURES.values(), *(tag_exposure(t) for t in journal.custom)]
+    return {e.key: e for e in sorted(every, key=lambda e: SOURCES.index(e.source))}
 
 
 # ---------------------------------------------------------------- statistics

@@ -1,7 +1,11 @@
 import { motion, useReducedMotion } from 'motion/react'
 import { Info } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Link, useLocation } from 'react-router'
 import { cn, IconButton, Popover } from '../primitives'
+
+/** Anchor of a chapter's section on the Methods page; Fig. 4.2 links to chapter 4. */
+export const methodsAnchor = (chapter: number) => `chapter-${chapter}`
 
 export interface MethodNote {
   body: ReactNode
@@ -33,6 +37,7 @@ export function Figure({
   id?: string
 }) {
   const reduced = useReducedMotion()
+  const { search } = useLocation()
   return (
     <motion.figure
       id={id}
@@ -58,6 +63,12 @@ export function Figure({
               <div className="eyebrow mb-2">Method</div>
               <div className="space-y-2 text-ink-2">{method.body}</div>
               {method.cite && <div className="mt-3 border-t border-hairline pt-2.5 text-[11.5px] text-ink-3 italic">{method.cite}</div>}
+              <Link
+                to={{ pathname: '/methods', search, hash: methodsAnchor(parseInt(index)) }}
+                className="mt-3 inline-block text-[12px] text-ink-2 underline decoration-hairline-2 underline-offset-4 transition-colors hover:text-ink"
+              >
+                Full method and formulas →
+              </Link>
             </Popover>
           )}
         </div>

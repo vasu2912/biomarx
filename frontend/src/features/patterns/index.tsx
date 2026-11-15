@@ -31,7 +31,7 @@ const METHOD = {
         {SPEARMAN_NOTE}
         <p>
           The p-values of all pairs are adjusted together with the Benjamini–Hochberg procedure. A dot marks pairs whose false discovery rate q is below 0.05,
-          so about one in twenty of the dotted cells is expected to be a fluke.
+          so at most about one in twenty of the dotted cells is expected to be a fluke.
         </p>
         <p>Rows and columns follow average-linkage hierarchical clustering on the distance 1 − |ρ|, so metrics that move together, in either direction, sit next to each other.</p>
       </>
@@ -51,7 +51,7 @@ const METHOD = {
   state: {
     body: (
       <>
-        <p>Each cell is a robust z-score: the day’s value minus the metric’s median over the range, divided by 1.4826 × the median absolute deviation. Medians keep a few extreme days from setting the scale.</p>
+        <p>Each metric is first smoothed with a centred 7-day rolling mean. Each cell is then a robust z-score: the smoothed value minus its median over the range, divided by 1.4826 × the median absolute deviation. Medians keep a few extreme days from setting the scale.</p>
         <p>Color saturates at ±{Z_CLAMP}. Rows use the same clustered order as Fig. 5.1, so related metrics light up as blocks.</p>
       </>
     ),

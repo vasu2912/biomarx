@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Link, Navigate, NavLink, Outlet, useLocation, useSearchParams } from 'react-router'
-import { Upload } from 'lucide-react'
+import { BookOpen, Upload } from 'lucide-react'
 import type { Dataset, MetricDef, Range } from '@/core/domain'
 import { buildRegistry } from '@/core/metrics'
 import { decodeSelection, encodeSelection, previousRange } from '@/core/range'
@@ -22,7 +22,7 @@ export function Shell() {
   const status = useStatus()
   const metrics = useMetrics()
   const { pathname } = useLocation()
-  const onImport = pathname === '/import'
+  const open = pathname === '/import' || pathname === '/methods'
 
   if (status.isPending || metrics.isPending) return <BootScreen />
   if (status.isError || metrics.isError) {
@@ -34,7 +34,7 @@ export function Shell() {
   }
   const dataset = status.data.dataset
   if (!dataset) {
-    if (!onImport) return <Navigate to="/import" replace />
+    if (!open) return <Navigate to="/import" replace />
     return (
       <Frame>
         <Outlet />
@@ -53,12 +53,14 @@ function ObservatoryLayout({ dataset, defs }: { dataset: Dataset; defs: readonly
     () => ({ dataset, registry, span, range, prev: previousRange(range, span) }),
     [dataset, registry, span, range],
   )
-  const { pathname } = useLocation()
+  const { pathname, hash } = useLocation()
   const setHoverDay = useUi((s) => s.setHoverDay)
   useEffect(() => {
     setHoverDay(null)
-    window.scrollTo(0, 0)
-  }, [pathname, setHoverDay])
+    const target = hash && document.getElementById(hash.slice(1))
+    if (target) target.scrollIntoView()
+    else window.scrollTo(0, 0)
+  }, [pathname, hash, setHoverDay])
 
   return (
     <ObservatoryContext value={value}>
@@ -72,6 +74,7 @@ function ObservatoryLayout({ dataset, defs }: { dataset: Dataset; defs: readonly
         <main className="mx-auto max-w-[1180px] px-4 pt-10 pb-24 sm:px-8">
           <Outlet />
         </main>
+        <Footer />
       </div>
     </ObservatoryContext>
   )
@@ -136,6 +139,23 @@ function Rail() {
             <RailLink chapter={c} search={search} values={c.spark ? sparks.get(c.spark) : undefined} />
           </li>
         ))}
+        <li className="mt-3 border-t border-hairline pt-3">
+          <NavLink
+            to={{ pathname: '/methods', search }}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-md px-3 py-2 transition-colors',
+                isActive ? 'bg-raised text-ink shadow-[inset_0_0_0_1px_var(--color-hairline)]' : 'text-ink-2 hover:bg-white/[0.025] hover:text-ink',
+              )
+            }
+          >
+            <BookOpen size={13} className="w-5 shrink-0 text-ink-3" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13.5px] leading-tight">Methods</span>
+              <span className="block truncate text-[11px] text-ink-3">How every number is derived</span>
+            </span>
+          </NavLink>
+        </li>
       </ol>
       <div className="border-t border-hairline px-6 py-5 text-[11.5px] text-ink-3">
         <div className="eyebrow mb-1">Dataset</div>
@@ -260,6 +280,12 @@ function MobileNav() {
           {c.title}
         </NavLink>
       ))}
+      <NavLink
+        to={{ pathname: '/methods', search }}
+        className={({ isActive }) => cn('shrink-0 rounded-md px-3 py-1.5 text-[13px] whitespace-nowrap', isActive ? 'bg-raised text-ink' : 'text-ink-3')}
+      >
+        Methods
+      </NavLink>
     </nav>
   )
 }
@@ -267,11 +293,18 @@ function MobileNav() {
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <div className="observatory-bg min-h-dvh">
-      <header className="logo flex h-[var(--topbar-h)] items-center gap-2.5 border-b border-hairline px-6">
-        <LogoMark />
-        <span className="display text-[21px] text-ink">Biomarx</span>
+      <header className="flex h-[var(--topbar-h)] items-center justify-between gap-4 border-b border-hairline px-6">
+        <Link to="/import" className="logo flex items-center gap-2.5">
+          <LogoMark />
+          <span className="display text-[21px] text-ink">Biomarx</span>
+        </Link>
+        <NavLink to="/methods" className={({ isActive }) => cn('inline-flex items-center gap-2 text-[13px] transition-colors hover:text-ink', isActive ? 'text-ink' : 'text-ink-3')}>
+          <BookOpen size={14} />
+          Methods
+        </NavLink>
       </header>
       <main className="mx-auto max-w-[1180px] px-4 pt-10 pb-24 sm:px-8">{children}</main>
+      <Footer />
     </div>
   )
 }
@@ -285,5 +318,33 @@ function BootScreen() {
         <Skeleton className="h-72 w-full" />
       </div>
     </div>
+  )
+}
+
+const REPO = 'https://github.com/vasu2912/biomarx'
+
+function Footer() {
+  return (
+    <footer className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-hairline px-4 py-6 text-[12px] text-ink-3 sm:px-8">
+      <span className="inline-flex items-center gap-1.5">
+        Made by
+        <a href="https://github.com/vasu2912" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-ink-2 transition-colors hover:text-ink">
+          <GitHubMark />
+          Vasu
+        </a>
+      </span>
+      <a href={`${REPO}/blob/main/LICENSE`} target="_blank" rel="noreferrer" className="transition-colors hover:text-ink">
+        Open source under the MIT License
+      </a>
+    </footer>
+  )
+}
+
+/** lucide dropped brand icons in 1.0, so the GitHub mark is drawn here. */
+function GitHubMark() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden fill="currentColor">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+    </svg>
   )
 }

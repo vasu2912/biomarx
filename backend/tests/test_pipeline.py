@@ -297,3 +297,28 @@ def test_fitness_waits_for_a_profile_then_counts_workouts(client):
     assert f["workouts"][0][0]["activity"] == "TraditionalStrengthTraining"
     assert f["workouts"][0][0]["trimp"] is not None and f["trimp"][0] == f["workouts"][0][0]["trimp"]
     assert [b["label"] for b in f["steps_bands"]] == ["Under 60"]
+
+
+def test_baseline_adds_wrist_temperature_only_when_recorded(client):
+    upload(client, synthetic_export())
+    b = client.get("/api/analysis/baseline").json()
+    assert [x["key"] for x in b["signals"]] == ["rhr_next", "hrv", "resp", "night_hr", "spo2"]
+    assert len(b["days"]) == len(b["concurrent"]) == DAYS
+
+    on = lambda d: START + dt.timedelta(days=d, hours=23, minutes=30)  # noqa: E731
+    temp = lambda d: 36.5 if d == DAYS - 1 else 34 + d % 3 * 0.1  # noqa: E731
+    temps = "".join(_rec("Quantity", "AppleSleepingWristTemperature", "Watch", on(d), on(d) + dt.timedelta(hours=7), temp(d), "degC") for d in range(DAYS))
+    upload(client, synthetic_export(temps))
+    b = client.get("/api/analysis/baseline").json()
+    t = next(x for x in b["signals"] if x["key"] == "wrist_temp")
+    assert t["concern"] == "up" and t["value"][0] == pytest.approx(34)
+    assert t["z"][13] is None and t["median"][-2] == pytest.approx(34.1)
+    assert t["z"][-2] == pytest.approx(0) and t["z"][-1] > 2  # the 36.5 night stands out from its 34.0–34.2 baseline
+
+
+def test_seven_hours_counts_nights_at_the_floor(client):
+    upload(client, synthetic_export())
+    f = client.get("/api/analysis/seven-hours").json()
+    assert f["floor_h"] == 7 and f["shortfall_nights"] == 14
+    assert f["share"] == 100 and f["week_share"][0] == 100 and f["week_nights"][0] >= 6
+    assert f["shortfall_median"] == 0 and f["shortfall"][:13] == [None] * 13

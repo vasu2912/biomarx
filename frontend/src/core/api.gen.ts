@@ -311,6 +311,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Night Baseline */
+        get: operations["night_baseline_api_analysis_baseline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analysis/seven-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Seven Hours */
+        get: operations["seven_hours_api_analysis_seven_hours_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecg": {
         parameters: {
             query?: never;
@@ -366,6 +400,45 @@ export interface components {
             transitions: (number | null)[][];
             /** Transition Counts */
             transition_counts: (number | null)[][];
+        };
+        /**
+         * BaselineOut
+         * @description Per day of the range (night D): each signal against the 28 nights before it. `scale` is 1.4826 × MAD.
+         */
+        BaselineOut: {
+            range: components["schemas"]["RangeOut"];
+            /** Days */
+            days: string[];
+            /** Signals */
+            signals: components["schemas"]["BaselineSignalOut"][];
+            /** Concurrent */
+            concurrent: number[];
+            /** Flag Z */
+            flag_z: number;
+            /** Min Concurrent */
+            min_concurrent: number;
+            /** Baseline Nights */
+            baseline_nights: number;
+            /** Min Baseline Nights */
+            min_baseline_nights: number;
+        };
+        /** BaselineSignalOut */
+        BaselineSignalOut: {
+            /** Key */
+            key: string;
+            /**
+             * Concern
+             * @enum {string}
+             */
+            concern: "up" | "down";
+            /** Value */
+            value: (number | null)[];
+            /** Median */
+            median: (number | null)[];
+            /** Scale */
+            scale: (number | null)[];
+            /** Z */
+            z: (number | null)[];
         };
         /** ChronotypeOut */
         ChronotypeOut: {
@@ -705,6 +778,33 @@ export interface components {
             hr: (number | null)[];
             /** Months */
             months: components["schemas"]["RidgeMonthOut"][];
+        };
+        /**
+         * SevenHoursOut
+         * @description Weekly share of nights with at least `floor_h` of sleep, and per night D the hours short of it over the last recorded nights.
+         */
+        SevenHoursOut: {
+            range: components["schemas"]["RangeOut"];
+            /** Weeks */
+            weeks: string[];
+            /** Week Days */
+            week_days: number[];
+            /** Week Nights */
+            week_nights: number[];
+            /** Week Share */
+            week_share: (number | null)[];
+            /** Days */
+            days: string[];
+            /** Shortfall */
+            shortfall: (number | null)[];
+            /** Share */
+            share: number | null;
+            /** Shortfall Median */
+            shortfall_median: number | null;
+            /** Floor H */
+            floor_h: number;
+            /** Shortfall Nights */
+            shortfall_nights: number;
         };
         /** StateOut */
         StateOut: {
@@ -1437,6 +1537,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FitnessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    night_baseline_api_analysis_baseline_get: {
+        parameters: {
+            query?: {
+                /** @description First day, inclusive */
+                start?: string | null;
+                /** @description Last day, exclusive */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaselineOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seven_hours_api_analysis_seven_hours_get: {
+        parameters: {
+            query?: {
+                /** @description First day, inclusive */
+                start?: string | null;
+                /** @description Last day, exclusive */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SevenHoursOut"];
                 };
             };
             /** @description Validation Error */

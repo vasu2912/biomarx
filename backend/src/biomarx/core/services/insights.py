@@ -10,7 +10,7 @@ from typing import Literal
 
 import numpy as np
 
-from biomarx.core.analysis import activity, circadian, fitness, patterns, sleep
+from biomarx.core.analysis import activity, baseline, circadian, fitness, patterns, sleep
 from biomarx.core.analysis._np import nanmedian
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.ecg import analyse_ecg
@@ -214,6 +214,52 @@ class InsightService:
             rhr[idx[keep]] = val[keep]
             self._memo[key] = (fitness.rest_hr_filled(rhr), fitness.effort_minutes(start, dur, mets, nd), workouts)
         return self._memo[key]  # type: ignore[return-value]
+
+    @memo
+    def baseline(self, w: Window) -> dict:
+        """Each night of the range against its own trailing baseline, which may reach back before the range."""
+        d = self._derived()
+        nd = d.grids.timeline.days
+        series = {k: baseline.per_day(d.nights, d.nights.cols[k], nd) for k in baseline.SIGNALS}
+        concerns = dict(baseline.SIGNALS)
+        temp = self._wrist_temperature()
+        if temp is not None:
+            key, concern = baseline.WRIST_TEMP
+            series[key], concerns[key] = temp, concern
+        out = {k: tuple(a[w.lo : w.hi] for a in (x, *baseline.trailing_robust_z(x))) for k, x in series.items()}
+        return {"signals": out, "concerns": concerns, "concurrent": baseline.concurrent({k: v[3] for k, v in out.items()}, concerns)}
+
+    def _wrist_temperature(self) -> np.ndarray | None:
+        """Sleeping wrist temperature per night D, or None when the export has none. Read once per dataset version."""
+        key = ("wrist_temp", self._version)
+        if key not in self._memo:
+            d = self._derived()
+            with self.store.records() as r:
+                start, dur, val = r.intervals("AppleSleepingWristTemperature", d.grids.timeline.start)
+            # One sample spans the night; its midpoint places it inside the main episode.
+            self._memo[key] = baseline.night_mean(d.nights, start + dur / 2, val, d.grids.timeline.days) if val.size else None
+        return self._memo[key]  # type: ignore[return-value]
+
+    @memo
+    def seven_hours(self, w: Window) -> dict:
+        """Weekly share of nights at the 7 h floor, and the running 14-night shortfall below it."""
+        all_n = self._derived().nights
+        order = np.argsort(all_n.night, kind="stable")
+        night, tst = all_n.night[order], all_n.cols["tst"][order]
+        short = sleep.shortfall(tst)
+        weeks = fitness.Weeks.covering(w.timeline.start, w.lo, w.hi, w.timeline.days)
+        counts, share = sleep.floor_share(weeks.lo, weeks.hi, night, tst)
+        inside = (night >= w.lo) & (night < w.hi)
+        shortfall = np.full(w.hi - w.lo, np.nan)
+        shortfall[night[inside] - w.lo] = short[inside]
+        return {
+            "weeks": weeks,
+            "week_nights": counts,
+            "week_share": share,
+            "shortfall": shortfall,
+            "share": sleep.floor_share(np.array([w.lo]), np.array([w.hi]), night, tst)[1][0],
+            "shortfall_median": nanmedian(short[inside]) if np.isfinite(short[inside]).any() else np.nan,
+        }
 
     # ------------------------------------------------------------------ ecg
 

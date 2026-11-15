@@ -10,6 +10,7 @@ class MetricGroup(StrEnum):
     CIRCADIAN = "circadian"
     NOCTURNAL = "nocturnal"
     GAIT = "gait"
+    FITNESS = "fitness"
 
 
 class Direction(StrEnum):
@@ -98,6 +99,9 @@ METRICS: tuple[Metric, ...] = (
     _M("double_support", "Double-support time", "%", _G.GAIT, 1, _D.LOWER, "Share of the gait cycle with both feet on the ground."),
     _M("asymmetry", "Walking asymmetry", "%", _G.GAIT, 1, _D.LOWER, "Share of steps with asymmetric timing between feet."),
     _M("wear", "Wear time", "%", _G.ACTIVITY, 0, _D.HIGHER, "Share of the day with a heart-rate sample within 15 minutes."),
+    _M("vo2max", "VO2max", "mL/min·kg", _G.FITNESS, 1, _D.HIGHER, "The watch's estimate of maximal oxygen uptake, mean of day D."),
+    _M("hrr1", "1-min HR recovery", "bpm", _G.FITNESS, 0, _D.HIGHER, "Heart-rate drop in the minute after a workout ends, mean of day D."),
+    _M("walking_hr", "Walking HR", "bpm", _G.FITNESS, 0, _D.LOWER, "Average heart rate while walking on day D."),
 )
 
 BY_KEY: dict[str, Metric] = {m.key: m for m in METRICS}
@@ -109,4 +113,10 @@ GAIT_TYPES: dict[str, str] = {
     "step_length": "WalkingStepLength",
     "double_support": "WalkingDoubleSupportPercentage",
     "asymmetry": "WalkingAsymmetryPercentage",
+}
+
+FITNESS_TYPES: dict[str, str] = {
+    "vo2max": "VO2Max",
+    "hrr1": "HeartRateRecoveryOneMinute",
+    "walking_hr": "WalkingHeartRateAverage",
 }

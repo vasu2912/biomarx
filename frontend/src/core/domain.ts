@@ -21,6 +21,10 @@ export type HrActivity = S['HrActivityOut']
 export type EcgSummary = S['EcgSummaryOut']
 export type EcgDetail = S['EcgDetailOut']
 export type CreateImport = S['CreateImportOut']
+export type Fitness = S['FitnessOut']
+export type Workout = S['WorkoutOut']
+export type Profile = S['ProfileOut']
+export type ProfileInput = S['ProfileIn']
 
 export type Column = (number | null)[]
 

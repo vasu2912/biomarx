@@ -276,3 +276,24 @@ def test_profile_prefers_the_user_override_and_survives_reimport(client):
 def test_profile_input_is_validated(client, body, detail):
     r = client.put("/api/profile", json=body)
     assert (r.status_code, r.json()) == (422, {"detail": detail})
+
+
+def test_fitness_waits_for_a_profile_then_counts_workouts(client):
+    t0 = START + dt.timedelta(days=3, hours=18)
+    workout = (
+        ' <Workout workoutActivityType="HKWorkoutActivityTypeTraditionalStrengthTraining" duration="30" sourceName="Watch" '
+        f'startDate="{t0.strftime(FMT)}" endDate="{(t0 + dt.timedelta(minutes=30)).strftime(FMT)}"/>\n'
+    )
+    rest = _rec("Quantity", "RestingHeartRate", "Watch", START, START, 55, "count/min")
+    upload(client, synthetic_export(workout + rest))
+    f = client.get("/api/analysis/fitness").json()
+    assert f["weeks"][0] == START.date().isoformat()
+    assert f["hrmax"] is None and all(v is None for v in f["trimp"])
+    assert f["strength_days"][0] == 1 and len(f["steps_bands"]) == 2
+
+    client.put("/api/profile", json={"birth_date": "1986-01-01", "sex": "female"})
+    f = client.get("/api/analysis/fitness").json()
+    assert f["age"] == 40 and f["hrmax"] == pytest.approx(180)
+    assert f["workouts"][0][0]["activity"] == "TraditionalStrengthTraining"
+    assert f["workouts"][0][0]["trimp"] is not None and f["trimp"][0] == f["workouts"][0][0]["trimp"]
+    assert [b["label"] for b in f["steps_bands"]] == ["Under 60"]

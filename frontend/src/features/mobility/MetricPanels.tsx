@@ -16,7 +16,7 @@ export interface MetricFigureSpec {
   caption: string
   method: MethodNote
   metrics: readonly string[]
-  cols: 2 | 4
+  cols: 2 | 3 | 4
   empty: string
 }
 

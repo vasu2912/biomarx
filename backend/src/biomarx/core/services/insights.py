@@ -10,7 +10,7 @@ from typing import Literal
 
 import numpy as np
 
-from biomarx.core.analysis import activity, circadian, patterns, sleep
+from biomarx.core.analysis import activity, circadian, fitness, patterns, sleep
 from biomarx.core.analysis._np import nanmedian
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.ecg import analyse_ecg
@@ -190,6 +190,30 @@ class InsightService:
             "dose_response": activity.hr_vs_steps(g, w.lo, w.hi),
             "ridgeline": activity.monthly_ridgeline(g, w.lo, w.hi, months),
         }
+
+    @memo
+    def fitness(self, w: Window, age: int | None, sex: fitness.TrimpSex | None) -> dict:
+        """Weekly load and activity. Keyed on age and sex too: the profile can change without a re-derive."""
+        g = self._derived().grids
+        rest, effort, workouts = self._fitness_inputs()
+        weeks = fitness.Weeks.covering(w.timeline.start, w.lo, w.hi, w.timeline.days)
+        out = fitness.weekly(weeks, g.hr1, g.worn, rest, effort, workouts, age, sex)
+        return {**out, "weeks": weeks, "workout_table": workouts, "step_bands": fitness.step_bands(age)}
+
+    def _fitness_inputs(self) -> tuple[np.ndarray, tuple, fitness.Workouts]:
+        """Record-level inputs read once per dataset version: filled resting HR per day, effort minutes per day, workouts."""
+        key = ("fitness_inputs", self._version)
+        if key not in self._memo:
+            origin, nd = self._derived().grids.timeline.start, self._derived().grids.timeline.days
+            with self.store.records() as r:
+                idx, val = r.daily_best_source("RestingHeartRate", "mean", origin)
+                start, dur, mets = r.intervals("PhysicalEffort", origin)
+                workouts = r.workouts(origin)
+            rhr = np.full(nd, np.nan)
+            keep = (idx >= 0) & (idx < nd)
+            rhr[idx[keep]] = val[keep]
+            self._memo[key] = (fitness.rest_hr_filled(rhr), fitness.effort_minutes(start, dur, mets, nd), workouts)
+        return self._memo[key]  # type: ignore[return-value]
 
     # ------------------------------------------------------------------ ecg
 

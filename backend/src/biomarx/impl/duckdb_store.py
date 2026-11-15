@@ -22,6 +22,7 @@ import numpy as np
 import pyarrow as pa
 
 from biomarx.core.analysis.derived import Derived
+from biomarx.core.analysis.fitness import Workouts
 from biomarx.core.analysis.grids import Grids, SleepSegments
 from biomarx.core.analysis.sleep import Nights
 from biomarx.core.domain import Dataset, Sex, SleepCode, Timeline
@@ -139,6 +140,23 @@ class DuckRecordReader:
             origin,
             record_type,
         )
+
+    def intervals(self, record_type: str, origin: dt.date) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Start minute index, duration in minutes and value of every sample of one type."""
+        r = self.con.execute(
+            """SELECT datediff('minute', ?::TIMESTAMP, start_ts) AS m, datediff('second', start_ts, end_ts) / 60.0 AS d, value_num AS v
+               FROM records WHERE type = ? AND value_num IS NOT NULL""",
+            [origin, record_type],
+        ).fetchnumpy()
+        return np.asarray(r["m"], dtype=np.int64), _float(r["d"]), _float(r["v"])
+
+    def workouts(self, origin: dt.date) -> Workouts:
+        r = self.con.execute(
+            """SELECT activity, datediff('minute', ?::TIMESTAMP, start_ts) AS a, datediff('minute', ?::TIMESTAMP, end_ts) AS b
+               FROM workouts WHERE start_ts IS NOT NULL AND end_ts IS NOT NULL ORDER BY start_ts""",
+            [origin, origin],
+        ).fetchnumpy()
+        return Workouts(np.asarray(r["activity"], dtype=object), np.asarray(r["a"], dtype=np.int64), np.asarray(r["b"], dtype=np.int64))
 
 
 class DuckSink:
@@ -295,6 +313,13 @@ class DuckStore:
             assert self._con is not None
             cols = {r[0] for r in self._con.execute("SELECT column_name FROM duckdb_columns() WHERE table_name = 'daily'").fetchall()}
         return int(m.get("derivation_version", 0)) < DERIVATION_VERSION or not cols.issuperset(DAILY_KEYS)
+
+    @contextmanager
+    def records(self):
+        """A reader over the live database's records, holding the connection for the duration."""
+        with self._lock:
+            assert self._con is not None
+            yield DuckRecordReader(self._con)
 
     def dataset(self) -> Dataset | None:
         with self._lock:

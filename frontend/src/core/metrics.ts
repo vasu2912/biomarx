@@ -47,6 +47,9 @@ export const K = {
   doubleSupport: 'double_support',
   asymmetry: 'asymmetry',
   wear: 'wear',
+  vo2max: 'vo2max',
+  hrr1: 'hrr1',
+  walkingHr: 'walking_hr',
 } as const
 
 export type Registry = Map<string, MetricDef>
@@ -85,4 +88,7 @@ export const METRIC_COLOR: Record<string, string> = {
   step_length: SIGNAL.rem,
   double_support: SIGNAL.sun,
   asymmetry: SIGNAL.onset,
+  vo2max: SIGNAL.rem,
+  hrr1: SIGNAL.hrv,
+  walking_hr: SIGNAL.ember,
 }

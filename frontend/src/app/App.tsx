@@ -23,6 +23,7 @@ const router = createBrowserRouter([
       { path: 'mobility', lazy: page(() => import('@/features/mobility')) },
       { path: 'ecg', lazy: page(() => import('@/features/ecg')) },
       { path: 'fitness', lazy: page(() => import('@/features/fitness')) },
+      { path: 'environment', lazy: page(() => import('@/features/environment')) },
       { path: 'import', lazy: page(() => import('@/features/import')) },
       { path: '*', lazy: page(() => import('./NotFound')) },
     ],

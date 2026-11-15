@@ -10,7 +10,7 @@ from typing import Literal
 
 import numpy as np
 
-from biomarx.core.analysis import activity, baseline, circadian, exposures, fitness, patterns, sleep
+from biomarx.core.analysis import activity, baseline, circadian, environment, exposures, fitness, patterns, provenance, sleep
 from biomarx.core.analysis._np import nanmedian
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.ecg import analyse_ecg
@@ -304,6 +304,43 @@ class InsightService:
             with self.store.records() as r:
                 self._memo[key] = read_daylight(r, self._derived().grids.timeline)
         return self._memo[key]  # type: ignore[return-value]
+
+    @memo
+    def sound(self, w: Window) -> dict:
+        """Weekly noise dose of headphone and environmental audio over the ISO weeks covering the range."""
+        weeks = fitness.Weeks.covering(w.timeline.start, w.lo, w.hi, w.timeline.days)
+        out: dict = {"weeks": weeks}
+        for key, (start, dur, level) in self._audio().items():
+            out[key] = environment.weekly_dose(start, dur, level, weeks, w.timeline.days)
+        return out
+
+    def _audio(self) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        key = ("audio", self._version)
+        if key not in self._memo:
+            origin = self._derived().grids.timeline.start
+            with self.store.records() as r:
+                self._memo[key] = {k: r.intervals(t, origin) for k, t in environment.AUDIO_TYPES.items()}
+        return self._memo[key]  # type: ignore[return-value]
+
+    def seasons(self) -> dict[str, environment.Season]:
+        """Week-of-year profiles over the whole dataset; the range does not apply."""
+        key = ("seasons", self._version)
+        if key not in self._memo:
+            d = self._derived()
+            iso_year, iso_week = environment.iso_weeks(d.grids.timeline.start, d.grids.timeline.days)
+            self._memo[key] = {k: environment.season(d.daily[k], iso_year, iso_week) for k in environment.SEASON_KEYS}
+        return self._memo[key]  # type: ignore[return-value]
+
+    def sources(self, w: Window) -> tuple[list[str], dict[str, np.ndarray]]:
+        """Sources ordered over the whole dataset, so a source keeps its color across ranges; codes per family for the range."""
+        key = ("sources", self._version)
+        if key not in self._memo:
+            tl = self._derived().grids.timeline
+            with self.store.records() as r:
+                best = {f.key: r.best_source_by_day(f.record_type, f.rule, tl.start) for f in provenance.FAMILIES}
+            self._memo[key] = provenance.source_codes(best, tl.days)
+        names, codes = self._memo[key]  # type: ignore[misc]
+        return names, {k: c[w.lo : w.hi] for k, c in codes.items()}
 
     # ------------------------------------------------------------------ ecg
 

@@ -14,6 +14,7 @@ import numpy as np
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.fitness import Workouts
 from biomarx.core.analysis.grids import SleepSegments
+from biomarx.core.analysis.provenance import Rule
 from biomarx.core.domain import Dataset, ImportJob, Sex
 
 Series = tuple[np.ndarray, np.ndarray]
@@ -46,6 +47,7 @@ class RecordReader(Protocol):
     def intervals(self, record_type: str, origin: dt.date) -> tuple[np.ndarray, np.ndarray, np.ndarray]: ...
     def workouts(self, origin: dt.date) -> Workouts: ...
     def heart_rate_minutes_of_sources(self, record_type: str, origin: dt.date) -> np.ndarray: ...
+    def best_source_by_day(self, record_type: str, rule: Rule, origin: dt.date) -> tuple[np.ndarray, np.ndarray]: ...
 
 
 class RecordSink(Protocol):

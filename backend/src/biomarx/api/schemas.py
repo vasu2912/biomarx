@@ -378,6 +378,53 @@ class ExposuresOut(BaseModel):
     resamples: int
 
 
+class SeasonOut(BaseModel):
+    """Per ISO week 1–53: the median across years of weekly medians, the quartiles across years (null under two years) and the years."""
+
+    key: str
+    median: Vec
+    q25: Vec
+    q75: Vec
+    years: list[int]
+
+
+class EnvironmentOut(BaseModel):
+    """Weekly noise dose over ISO weeks covering the range, as % of the weekly allowance; seasons cover the whole dataset.
+
+    A headphone week without samples is 0 (nothing was played); an environmental week without samples is null (not measured).
+    """
+
+    range: RangeOut
+    weeks: list[dt.date]
+    week_days: list[int]
+    headphone: Vec
+    headphone_samples: list[int]
+    environmental: Vec
+    environmental_samples: list[int]
+    reference_db: float
+    allowance_hours: float
+    season_span: RangeOut
+    seasons: list[SeasonOut]
+
+
+class SourceFamilyOut(BaseModel):
+    key: str
+    label: str
+    source: list[int | None]
+
+
+class SourcesOut(BaseModel):
+    """Per day of the range, the index into `sources` of the source that supplied each record family; null for none.
+
+    Sleep is by night D, the main episode that starts after noon on day D. `sources` is ordered by days supplied over the whole dataset.
+    """
+
+    range: RangeOut
+    days: list[dt.date]
+    sources: list[str]
+    families: list[SourceFamilyOut]
+
+
 class EcgSummaryOut(BaseModel):
     id: str
     recorded_at: dt.datetime

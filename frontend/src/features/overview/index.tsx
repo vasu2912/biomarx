@@ -4,12 +4,14 @@ import { useObservatory } from '@/app/context'
 import { formatMetric, unitSuffix } from '@/core/format'
 import { def, K } from '@/core/metrics'
 import { isNum } from '@/core/stats'
-import { formatRange } from '@/core/time'
-import { useDaily, useRaster, useSummary } from '@/infra/queries'
+import type { Sources } from '@/core/domain'
+import { formatDate, formatRange } from '@/core/time'
+import { useDaily, useRaster, useSources, useSummary } from '@/infra/queries'
 import { Figure, FigureSkeleton, Legend } from '@/ui/charts/Figure'
 import { EmptyState } from '@/ui/primitives'
 import { Actogram, ACTOGRAM_LEGEND } from './Actogram'
 import { FourTrends, TREND_KEYS, TREND_LEGEND } from './FourTrends'
+import { SourceStrips, sourceLegend } from './Sources'
 import { buildVitals, VITAL_KEYS, VitalSigns } from './VitalSigns'
 
 const DAILY_KEYS = [...new Set([...VITAL_KEYS, ...TREND_KEYS])]
@@ -22,6 +24,7 @@ export default function Page() {
   const prevSummary = useSummary(prev)
   const daily = useDaily(range, DAILY_KEYS)
   const raster = useRaster('sleep', range)
+  const sources = useSources(range)
 
   const vitals = useMemo(
     () => (summary.data ? buildVitals(registry, summary.data, prevSummary.data, daily.data) : null),
@@ -124,12 +127,73 @@ export default function Page() {
       ) : (
         <FigureSkeleton height={420} />
       )}
+
+      {sources.data ? (
+        <Figure
+          index="1.4"
+          title="Where the data came from"
+          caption="One row per kind of record and one cell per day, colored by the source that supplied it. Hover a day to name each source; the same day is marked in the trends above."
+          reading={sourcesReading(sources.data)}
+          legend={<Legend items={sourceLegend(sources.data)} />}
+          method={{
+            body: (
+              <>
+                <p>
+                  Each cell names the source the pipeline used for that record on that day. Heart rate comes from the source with the most samples that day, and only its samples build the
+                  minute grid. Sleep comes from the source with the most staged minutes that night, placed on day D for the night that starts after noon on day D. Steps take the maximum
+                  across sources in each 10-minute bin; the cell shows the source with the most steps that day. HRV, SpO2 and daylight pool every source, and the cell shows the one with the
+                  most samples.
+                </p>
+                <p>
+                  A change of device can shift a baseline: sensors, algorithms and sampling differ between them. Before reading a step change in another figure as a change in you, check
+                  whether the source changed here on the same day. The reading dates the last switch of heart-rate source that held, ignoring runs of another source shorter than a week.
+                </p>
+              </>
+            ),
+          }}
+          fetching={refetching(sources)}
+        >
+          {sources.data.days.length > 0 ? <SourceStrips data={sources.data} /> : <EmptyState title="No days in this range" />}
+        </Figure>
+      ) : sources.isError ? (
+        <EmptyState title="Sources unavailable">{sources.error.message}</EmptyState>
+      ) : (
+        <FigureSkeleton height={200} />
+      )}
     </ChapterPage>
   )
 }
 
 function fmtInt(v: number | null | undefined) {
   return isNum(v) ? Math.round(v).toLocaleString('en-US') : '0'
+}
+
+function sourcesReading(d: Sources): string | undefined {
+  const days = d.sources.map(() => new Set<number>())
+  d.families.forEach((f) => f.source.forEach((s, i) => s != null && days[s].add(i)))
+  const top = days.reduce((b, s, i) => (s.size > days[b].size ? i : b), 0)
+  if (!days[top]?.size) return undefined
+  // Runs of heart-rate source over recorded days; the current source took over after the last run of another lasting a week or more.
+  const hr = d.families.find((f) => f.key === 'hr')?.source ?? []
+  const runs: { src: number; start: number; n: number }[] = []
+  hr.forEach((s, i) => {
+    if (s == null) return
+    const last = runs[runs.length - 1]
+    if (last?.src === s) last.n++
+    else runs.push({ src: s, start: i, n: 1 })
+  })
+  const cur = (runs.findLast((r) => r.n >= 7) ?? runs[runs.length - 1])?.src
+  const lastOther = runs.findLastIndex((r) => r.src !== cur && r.n >= 7)
+  const since = lastOther < 0 ? undefined : runs.slice(lastOther).find((r) => r.src === cur)
+  const hrPart =
+    cur == null
+      ? ''
+      : since
+        ? ` Heart rate has come mainly from ${d.sources[cur]} since ${formatDate(d.days[since.start], { year: true })}.`
+        : runs.length === 1
+          ? ` Heart rate came from ${d.sources[cur]} on every day it was recorded.`
+          : ` Heart rate came mainly from ${d.sources[cur]} throughout the range.`
+  return `${d.sources[top]} supplied records on ${fmtInt(days[top].size)} of ${fmtInt(d.days.length)} days in this range.${hrPart}`
 }
 
 function vitalsReading(groups: ReturnType<typeof buildVitals>): string | undefined {

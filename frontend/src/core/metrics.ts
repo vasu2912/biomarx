@@ -50,6 +50,8 @@ export const K = {
   vo2max: 'vo2max',
   hrr1: 'hrr1',
   walkingHr: 'walking_hr',
+  daylight: 'daylight',
+  morningDaylight: 'morning_daylight',
 } as const
 
 export type Registry = Map<string, MetricDef>
@@ -91,4 +93,6 @@ export const METRIC_COLOR: Record<string, string> = {
   vo2max: SIGNAL.rem,
   hrr1: SIGNAL.hrv,
   walking_hr: SIGNAL.ember,
+  daylight: SIGNAL.sun,
+  morning_daylight: SIGNAL.sun,
 }

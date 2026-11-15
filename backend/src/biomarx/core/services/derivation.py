@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import time
+
 import numpy as np
 
 from biomarx.core.analysis import circadian, sleep
@@ -9,7 +12,12 @@ from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.grids import build_grids
 from biomarx.core.domain import Timeline
 from biomarx.core.metrics import DAILY_KEYS, GAIT_TYPES
-from biomarx.core.ports import ExportFormatError, RecordReader
+from biomarx.core.ports import ExportFormatError, RecordReader, Store
+
+log = logging.getLogger(__name__)
+
+# Bump whenever derive() output changes shape or values; stored databases are then re-derived from their records.
+DERIVATION_VERSION = 1
 
 
 def derive(reader: RecordReader) -> Derived:
@@ -55,6 +63,21 @@ def derive(reader: RecordReader) -> Derived:
         _scatter(daily[key], idx, val)
 
     return Derived(grids, nights, daily)
+
+
+def rederive(store: Store) -> bool:
+    """Rebuild the derived tables from the records the live database already holds, if they are out of date.
+
+    Converges: the check reads the live database, so a run after a crash or a second run finds nothing to do.
+    """
+    if not store.needs_rederive():
+        return False
+    t0 = time.perf_counter()
+    with store.staging(from_live=True) as stage:
+        stage.write_derived(derive(stage.reader))
+        stage.publish()
+    log.info("re-derived the dataset in %.1fs", time.perf_counter() - t0)
+    return True
 
 
 def _add_nocturnal_samples(nights: sleep.Nights, reader: RecordReader, origin) -> None:

@@ -112,6 +112,16 @@ def get_import(job_id: str, c: Annotated[Container, Depends(container)]) -> s.Im
     return s.ImportJobOut.of(job)
 
 
+@router.get("/profile")
+def get_profile(c: Annotated[Container, Depends(container)]) -> s.ProfileOut:
+    return s.ProfileOut.of(c.profile.get())
+
+
+@router.put("/profile", responses={422: {"model": s.ErrorOut}})
+def put_profile(body: s.ProfileIn, c: Annotated[Container, Depends(container)]) -> s.ProfileOut:
+    return s.ProfileOut.of(c.profile.set(body.birth_date, body.sex))
+
+
 # ---------------------------------------------------------------- tables
 
 

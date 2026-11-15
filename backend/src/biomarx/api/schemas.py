@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from biomarx.core.domain import Dataset, ImportJob, ImportState
 from biomarx.core.metrics import Direction, Metric, MetricGroup
+from biomarx.core.services.profile import Profile
 
 Num = float | None
 Vec = list[Num]
@@ -110,6 +112,40 @@ class CreateImportIn(BaseModel):
 class CreateImportOut(BaseModel):
     job: ImportJobOut
     chunk_size: int
+
+
+ProfileSource = Literal["export", "user"] | None
+
+
+class ProfileSourceOut(BaseModel):
+    birth_date: ProfileSource
+    sex: ProfileSource
+
+
+class ProfileOut(BaseModel):
+    birth_date: dt.date | None
+    sex: Literal["male", "female", "other"] | None
+    age: int | None
+    source: ProfileSourceOut
+
+    @classmethod
+    def of(cls, p: Profile) -> ProfileOut:
+        src = ProfileSourceOut(birth_date=p.birth_date_source, sex=p.sex_source)
+        return cls(birth_date=p.birth_date, sex=p.sex, age=p.age, source=src)  # type: ignore[arg-type]
+
+
+class ProfileIn(BaseModel):
+    """The user's overrides. A null field falls back to the export."""
+
+    birth_date: dt.date | None = None
+    sex: Literal["male", "female"] | None = None
+
+    @field_validator("birth_date")
+    @classmethod
+    def _plausible(cls, v: dt.date | None) -> dt.date | None:
+        if v is not None and not dt.date(1900, 1, 1) <= v <= dt.date.today():
+            raise ValueError("must be between 1900-01-01 and today")
+        return v
 
 
 class SummaryOut(BaseModel):

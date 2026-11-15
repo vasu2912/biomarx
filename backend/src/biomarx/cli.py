@@ -27,6 +27,17 @@ def ingest(path: Path) -> None:
 
 
 @app.command()
+def rederive() -> None:
+    """Rebuild the derived tables from the stored records if an older build derived them."""
+    from biomarx.container import build
+    from biomarx.core.services.derivation import rederive as run
+
+    c = build(Settings.from_env())
+    t0 = time.perf_counter()
+    typer.echo(f"re-derived in {time.perf_counter() - t0:.1f}s" if run(c.store) else "already up to date")
+
+
+@app.command()
 def serve(reload: bool = False) -> None:
     """Run the API and the built frontend."""
     import uvicorn

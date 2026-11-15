@@ -106,6 +106,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Profile */
+        get: operations["get_profile_api_profile_get"];
+        /** Put Profile */
+        put: operations["put_profile_api_profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/summary": {
         parameters: {
             query?: never;
@@ -580,6 +598,33 @@ export interface components {
             /** Dominant Hr Period */
             dominant_hr_period: number | null;
         };
+        /**
+         * ProfileIn
+         * @description The user's overrides. A null field falls back to the export.
+         */
+        ProfileIn: {
+            /** Birth Date */
+            birth_date?: string | null;
+            /** Sex */
+            sex?: ("male" | "female") | null;
+        };
+        /** ProfileOut */
+        ProfileOut: {
+            /** Birth Date */
+            birth_date: string | null;
+            /** Sex */
+            sex: ("male" | "female" | "other") | null;
+            /** Age */
+            age: number | null;
+            source: components["schemas"]["ProfileSourceOut"];
+        };
+        /** ProfileSourceOut */
+        ProfileSourceOut: {
+            /** Birth Date */
+            birth_date: ("export" | "user") | null;
+            /** Sex */
+            sex: ("export" | "user") | null;
+        };
         /** RangeOut */
         RangeOut: {
             /**
@@ -893,6 +938,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_profile_api_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+        };
+    };
+    put_profile_api_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

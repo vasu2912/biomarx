@@ -3,8 +3,11 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
+from typing import Literal
 
 MINUTES_PER_DAY = 1440
+
+Sex = Literal["male", "female", "other", "unknown"]
 
 
 class SleepCode(IntEnum):
@@ -152,3 +155,5 @@ class Dataset:
     exported_at: dt.datetime | None
     imported_at: dt.datetime
     version: str
+    birth_date: dt.date | None = None
+    sex: Sex = "unknown"

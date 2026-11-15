@@ -9,7 +9,11 @@ from fastapi.testclient import TestClient
 from biomarx.api.app import create_app
 from biomarx.config import Settings
 from biomarx.container import build
+from biomarx.core.services import derivation
+from biomarx.core.services.derivation import rederive
 from biomarx.core.services.imports import CHUNK_SIZE
+from biomarx.core.services.profile import age_on
+from biomarx.impl.apple_health import parse_me
 from biomarx.impl.jobs import InlineJobRunner
 
 DAYS = 21
@@ -24,9 +28,9 @@ def _rec(kind: str, typ: str, source: str, start: dt.datetime, end: dt.datetime,
     )
 
 
-def synthetic_export() -> bytes:
+def synthetic_export(me: str = "") -> bytes:
     """Three weeks of minute HR, hourly steps and one staged night per day, 23:30 to 07:00."""
-    lines = ['<?xml version="1.0"?>\n<HealthData>\n', f' <ExportDate value="{START.strftime(FMT)}"/>\n']
+    lines = ['<?xml version="1.0"?>\n<HealthData>\n', f' <ExportDate value="{START.strftime(FMT)}"/>\n', me]
     for d in range(DAYS):
         day = START + dt.timedelta(days=d)
         for m in range(0, 1440, 2):
@@ -165,3 +169,110 @@ def test_a_new_upload_replaces_an_abandoned_one(client, tmp_path):
     client.post("/api/imports", json={"filename": "export.zip", "size": 10})
     assert not (tmp_path / "uploads" / first["id"]).exists()
     assert client.get(f"/api/imports/{first['id']}").status_code == 404
+
+
+ME = (
+    ' <Me HKCharacteristicTypeIdentifierDateOfBirth="1980-06-15" HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexFemale"'
+    ' HKCharacteristicTypeIdentifierBloodType="HKBloodTypeNotSet"/>\n'
+)
+
+
+def _age_old_build(client) -> None:
+    """Make the live database look like an older build wrote it: no derivation version, one daily key missing."""
+    store = client.app.state.container.store
+    store._con.execute("ALTER TABLE daily DROP COLUMN sri; DELETE FROM meta WHERE key = 'derivation_version'")
+    store._cache = None
+
+
+def test_fresh_import_needs_no_rederive(client):
+    upload(client, synthetic_export())
+    assert not client.app.state.container.store.needs_rederive()
+    assert rederive(client.app.state.container.store) is False
+
+
+def test_old_database_is_rederived_from_its_records_and_converges(client):
+    upload(client, synthetic_export(ME))
+    store = client.app.state.container.store
+    before = client.get("/api/summary").json()["values"]
+    version = client.get("/api/status").json()["dataset"]["version"]
+    _age_old_build(client)
+
+    assert store.needs_rederive()
+    assert np.isnan(store.derived().daily["sri"]).all(), "old data keeps serving, the new key reads as missing"
+
+    assert rederive(store) is True
+    status = client.get("/api/status").json()["dataset"]
+    assert status["version"] != version
+    assert client.get("/api/summary").json()["values"] == before
+    assert client.get("/api/profile").json()["source"] == {"birth_date": "export", "sex": "export"}
+    assert rederive(store) is False
+
+
+def test_crash_during_rederive_keeps_the_live_database(client, monkeypatch):
+    upload(client, synthetic_export())
+    store = client.app.state.container.store
+    version = client.get("/api/status").json()["dataset"]["version"]
+    _age_old_build(client)
+
+    def crash(_):
+        raise RuntimeError("power cut")
+
+    monkeypatch.setattr(derivation, "derive", crash)
+    with pytest.raises(RuntimeError):
+        rederive(store)
+    assert client.get("/api/status").json()["dataset"]["version"] == version
+    assert not store.path.with_name(store.path.name + ".staging").exists()
+
+    monkeypatch.undo()
+    assert rederive(store) is True and rederive(store) is False
+
+
+def test_me_line_gives_birth_date_and_sex():
+    assert parse_me(ME) == (dt.date(1980, 6, 15), "female")
+    assert parse_me(' <Me HKCharacteristicTypeIdentifierDateOfBirth="" HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexNotSet"/>') == (
+        None,
+        "unknown",
+    )
+
+
+def test_age_counts_completed_years():
+    assert age_on(dt.date(1980, 6, 15), dt.date(2026, 6, 14)) == 45
+    assert age_on(dt.date(1980, 6, 15), dt.date(2026, 6, 15)) == 46
+
+
+def test_profile_prefers_the_user_override_and_survives_reimport(client):
+    assert client.get("/api/profile").json() == {
+        "birth_date": None,
+        "sex": None,
+        "age": None,
+        "source": {"birth_date": None, "sex": None},
+    }
+    upload(client, synthetic_export(ME))
+    # The dataset's last day is 2026-03-22.
+    assert client.get("/api/profile").json() == {
+        "birth_date": "1980-06-15",
+        "sex": "female",
+        "age": 45,
+        "source": {"birth_date": "export", "sex": "export"},
+    }
+    r = client.put("/api/profile", json={"birth_date": "1990-03-22", "sex": "male"})
+    assert r.json() == {"birth_date": "1990-03-22", "sex": "male", "age": 36, "source": {"birth_date": "user", "sex": "user"}}
+
+    upload(client, synthetic_export(ME))
+    assert client.get("/api/profile").json()["source"] == {"birth_date": "user", "sex": "user"}
+
+    r = client.put("/api/profile", json={"birth_date": None, "sex": "female"})
+    assert r.json()["birth_date"] == "1980-06-15" and r.json()["source"] == {"birth_date": "export", "sex": "user"}
+
+
+@pytest.mark.parametrize(
+    ("body", "detail"),
+    [
+        ({"birth_date": "1899-12-31"}, "birth_date: Value error, must be between 1900-01-01 and today"),
+        ({"birth_date": (dt.date.today() + dt.timedelta(days=1)).isoformat()}, "birth_date: Value error, must be between 1900-01-01 and today"),
+        ({"sex": "other"}, "sex: Input should be 'male' or 'female'"),
+    ],
+)
+def test_profile_input_is_validated(client, body, detail):
+    r = client.put("/api/profile", json=body)
+    assert (r.status_code, r.json()) == (422, {"detail": detail})

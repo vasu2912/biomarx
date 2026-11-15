@@ -1,7 +1,8 @@
 """DuckDB persistence. One database file per profile.
 
 An import fills a fresh staging file and swaps it over the live one with an atomic
-rename, so a failed or repeated import never leaves a half-written dataset.
+rename, so a failed or repeated import never leaves a half-written dataset. A re-derive
+uses the same swap, starting from a copy of the live file so its records carry over.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import shutil
 import threading
 import uuid
 from contextlib import contextmanager, suppress
@@ -22,17 +24,18 @@ import pyarrow as pa
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.grids import Grids, SleepSegments
 from biomarx.core.analysis.sleep import Nights
-from biomarx.core.domain import Dataset, SleepCode, Timeline
+from biomarx.core.domain import Dataset, Sex, SleepCode, Timeline
 from biomarx.core.metrics import DAILY_KEYS
 from biomarx.core.ports import EcgRecording, Series
+from biomarx.core.services.derivation import DERIVATION_VERSION
 
 SCHEMA = """
 CREATE TABLE records_raw (type VARCHAR, source VARCHAR, unit VARCHAR, start_ts TIMESTAMP, end_ts TIMESTAMP, value VARCHAR, value_num DOUBLE);
 CREATE TABLE workouts (activity VARCHAR, duration_min DOUBLE, source VARCHAR, start_ts TIMESTAMP, end_ts TIMESTAMP);
 CREATE TABLE ecg (id VARCHAR PRIMARY KEY, recorded_at TIMESTAMP, classification VARCHAR, sample_rate DOUBLE, device VARCHAR, samples BLOB);
-CREATE TABLE grids (name VARCHAR PRIMARY KEY, rows BIGINT, cols BIGINT, dtype VARCHAR, data BLOB);
 CREATE TABLE meta (key VARCHAR PRIMARY KEY, value VARCHAR);
 """
+DERIVED_SCHEMA = "CREATE TABLE grids (name VARCHAR PRIMARY KEY, rows BIGINT, cols BIGINT, dtype VARCHAR, data BLOB);"
 
 GRID_FIELDS = {"hr1": np.float32, "worn": np.bool_, "steps10": np.float32, "sleep": np.int8}
 
@@ -139,9 +142,9 @@ class DuckRecordReader:
 
 
 class DuckSink:
-    def __init__(self, con: duckdb.DuckDBPyConnection) -> None:
+    def __init__(self, con: duckdb.DuckDBPyConnection, meta: dict[str, str]) -> None:
         self.con = con
-        self.exported_at: dt.datetime | None = None
+        self.meta = meta
 
     def add_records(self, batch: dict[str, list]) -> None:
         self.con.register("batch", pa.table(batch))
@@ -166,17 +169,26 @@ class DuckSink:
         )
 
     def set_export_date(self, exported_at: dt.datetime | None) -> None:
-        self.exported_at = exported_at
+        self.meta["exported_at"] = exported_at.isoformat() if exported_at else ""
+
+    def set_profile(self, birth_date: dt.date | None, sex: Sex) -> None:
+        self.meta.update(birth_date=birth_date.isoformat() if birth_date else "", sex=sex)
 
 
 class DuckStaging:
-    def __init__(self, store: DuckStore, path: Path) -> None:
+    def __init__(self, store: DuckStore, path: Path, from_live: bool = False) -> None:
+        """`from_live` keeps the copied file's records, workouts, ecg and meta and rebuilds only the derived tables."""
         self.store, self.path = store, path
         self.con = duckdb.connect(str(path))
-        self.con.execute(SCHEMA)
-        self.sink = DuckSink(self.con)
+        if from_live:
+            self.con.execute("DROP TABLE IF EXISTS grids; DROP TABLE IF EXISTS nights; DROP TABLE IF EXISTS daily;")
+            self.con.execute(DERIVED_SCHEMA)
+        else:
+            self.con.execute(SCHEMA + DERIVED_SCHEMA)
+        now = dt.datetime.now(dt.UTC).isoformat()
+        self.sink = DuckSink(self.con, {} if from_live else {"exported_at": "", "imported_at": now})
         self.reader = DuckRecordReader(self.con)
-        self._sorted = False
+        self._sorted = from_live
 
     def finish_records(self) -> None:
         """Cluster raw records by type and time so per-type scans prune whole row groups."""
@@ -206,16 +218,16 @@ class DuckStaging:
         records = self.con.execute("SELECT count(*) FROM records").fetchone()[0]
         sources = [r[0] for r in self.con.execute("SELECT DISTINCT source FROM records ORDER BY 1").fetchall()]
         meta = {
+            **self.sink.meta,
             "start": tl.start.isoformat(),
             "days": str(tl.days),
             "records": str(records),
             "nights": str(len(n)),
             "sources": json.dumps(sources),
-            "exported_at": self.sink.exported_at.isoformat() if self.sink.exported_at else "",
-            "imported_at": dt.datetime.now(dt.UTC).isoformat(),
             "version": uuid.uuid4().hex[:12],
+            "derivation_version": str(DERIVATION_VERSION),
         }
-        self.con.executemany("INSERT INTO meta VALUES (?, ?)", list(meta.items()))
+        self.con.executemany("INSERT OR REPLACE INTO meta VALUES (?, ?)", list(meta.items()))
 
     def publish(self) -> None:
         self.con.execute("CHECKPOINT")
@@ -251,11 +263,16 @@ class DuckStore:
             self._open()
 
     @contextmanager
-    def staging(self):
+    def staging(self, from_live: bool = False):
         path = self.path.with_name(self.path.name + ".staging")
         for p in (path, Path(str(path) + ".wal")):
             p.unlink(missing_ok=True)
-        stage = DuckStaging(self, path)
+        if from_live:
+            with self._lock:
+                assert self._con is not None
+                self._con.execute("CHECKPOINT")
+                shutil.copyfile(self.path, path)
+        stage = DuckStaging(self, path, from_live)
         try:
             yield stage
         except BaseException:
@@ -270,6 +287,15 @@ class DuckStore:
         except duckdb.CatalogException:
             return None
 
+    def needs_rederive(self) -> bool:
+        with self._lock:
+            m = self._meta()
+            if not m:
+                return False
+            assert self._con is not None
+            cols = {r[0] for r in self._con.execute("SELECT column_name FROM duckdb_columns() WHERE table_name = 'daily'").fetchall()}
+        return int(m.get("derivation_version", 0)) < DERIVATION_VERSION or not cols.issuperset(DAILY_KEYS)
+
     def dataset(self) -> Dataset | None:
         with self._lock:
             m = self._meta()
@@ -283,6 +309,8 @@ class DuckStore:
             exported_at=dt.datetime.fromisoformat(m["exported_at"]) if m["exported_at"] else None,
             imported_at=dt.datetime.fromisoformat(m["imported_at"]),
             version=m["version"],
+            birth_date=dt.date.fromisoformat(m["birth_date"]) if m.get("birth_date") else None,
+            sex=m.get("sex", "unknown"),  # type: ignore[arg-type]
         )
 
     def derived(self) -> Derived | None:
@@ -307,7 +335,8 @@ class DuckStore:
                 {k: _float(v) for k, v in nr.items()},
             )
             dr = con.execute("SELECT * FROM daily ORDER BY day").fetchnumpy()
-            daily = {k: _float(dr[k]) for k in DAILY_KEYS}
+            # A key added since this database was derived reads as missing until the re-derive lands.
+            daily = {k: _float(dr[k]) if k in dr else np.full(ds.timeline.days, np.nan) for k in DAILY_KEYS}
             derived = Derived(grids, nights, daily)
             self._cache = (ds.version, derived)
             return derived

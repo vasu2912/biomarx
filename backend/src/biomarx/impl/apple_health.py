@@ -18,6 +18,7 @@ from typing import IO
 
 import numpy as np
 
+from biomarx.core.domain import Sex
 from biomarx.core.ports import EcgRecording, ExportFormatError, ProgressFn, RecordSink
 
 BATCH = 250_000
@@ -25,6 +26,7 @@ ATTR = re.compile(r'(\w+)="([^"]*)"')
 TYPE_PREFIX = re.compile(r"^HK(?:Quantity|Category|Data)TypeIdentifier")
 ECG_DIR = "electrocardiograms/"
 ECG_KEEP = ("Recorded Date", "Classification", "Sample Rate", "Device")
+SEX = {"HKBiologicalSexMale": "male", "HKBiologicalSexFemale": "female", "HKBiologicalSexOther": "other"}
 
 
 class AppleHealthReader:
@@ -102,6 +104,9 @@ def _scan_xml(xml: IO[str], total: int, sink: RecordSink, progress: ProgressFn) 
             wcols["source"].append(unescape(d.get("sourceName", "")))
             wcols["start"].append(d.get("startDate", "")[:19])
             wcols["end"].append(d.get("endDate", "")[:19])
+        elif s.startswith("<Me "):
+            birth, sex = parse_me(s)
+            sink.set_profile(birth, sex)
         elif s.startswith("<ExportDate "):
             v = ATTR.findall(s)
             sink.set_export_date(_parse_ts(v[0][1]) if v else None)
@@ -116,6 +121,16 @@ def _scan_xml(xml: IO[str], total: int, sink: RecordSink, progress: ProgressFn) 
         raise ExportFormatError("No health records found in this export.")
     progress(1.0, f"{n:,} records read", n)
     return n
+
+
+def parse_me(line: str) -> tuple[dt.date | None, Sex]:
+    """Date of birth and biological sex from the export's `<Me>` element. Local only, never logged."""
+    d = dict(ATTR.findall(line))
+    try:
+        birth = dt.date.fromisoformat(d.get("HKCharacteristicTypeIdentifierDateOfBirth", ""))
+    except ValueError:
+        birth = None
+    return birth, SEX.get(d.get("HKCharacteristicTypeIdentifierBiologicalSex", ""), "unknown")  # type: ignore[return-value]
 
 
 def parse_ecg(stem: str, f: IO[str]) -> EcgRecording | None:

@@ -20,9 +20,10 @@ def create_app(settings: Settings | None = None, lazy: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if not lazy:
-            from biomarx.container import build
+            from biomarx.container import build, start_rederive
 
             app.state.container = build(settings)
+            start_rederive(app.state.container)
         yield
         runner = getattr(getattr(app.state, "container", None), "runner", None)
         if hasattr(runner, "shutdown"):

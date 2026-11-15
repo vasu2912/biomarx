@@ -38,9 +38,12 @@ def test_season_takes_the_median_across_years_of_weekly_medians():
         days = np.flatnonzero((iso_year == year) & (iso_week == 2))
         values[days[:3]] = [level - 1, level, level + 5]  # weekly median = level
     w3 = np.flatnonzero((iso_year == 2025) & (iso_week == 3))
-    values[w3[:1]] = 5.0  # one day is that week's median
+    values[w3[:1]] = 5.0  # one day is too few to stand for a week
+    w4 = np.flatnonzero((iso_year == 2025) & (iso_week == 4))
+    values[w4[:3]] = [4.0, 5.0, 9.0]
     s = env.season(values, iso_year, iso_week)
     assert s.years[1] == 3 and s.median[1] == 20
     assert s.q25[1] == pytest.approx(15) and s.q75[1] == pytest.approx(40)
     assert s.years[0] == 0 and np.isnan(s.median[0])
-    assert s.years[2] == 1 and s.median[2] == 5 and np.isnan(s.q25[2])
+    assert s.years[2] == 0 and np.isnan(s.median[2])
+    assert s.years[3] == 1 and s.median[3] == 5 and np.isnan(s.q25[3])

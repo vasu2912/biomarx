@@ -54,14 +54,18 @@ def iso_weeks(origin: dt.date, nd: int) -> tuple[np.ndarray, np.ndarray]:
     return np.array([c[0] for c in cal]), np.array([c[1] for c in cal])
 
 
+# A week's median from one or two days is one day's reading, not that week's typical value.
+MIN_DAYS_PER_WEEK = 3
+
+
 def season(values: np.ndarray, iso_year: np.ndarray, iso_week: np.ndarray) -> Season:
-    """The median of each (ISO year, week) over its days with a value, then per week of the year across years."""
+    """The median of each (ISO year, week) with at least MIN_DAYS_PER_WEEK values, then per week of the year across years."""
     ok = np.isfinite(values)
     by_week: list[list[float]] = [[] for _ in range(ISO_WEEKS)]
     for y in np.unique(iso_year):
         for w in range(1, ISO_WEEKS + 1):
             v = values[ok & (iso_year == y) & (iso_week == w)]
-            if v.size:
+            if v.size >= MIN_DAYS_PER_WEEK:
                 by_week[w - 1].append(float(np.median(v)))
     med, q25, q75, n = (np.full(ISO_WEEKS, np.nan) for _ in range(4))
     for k, v in enumerate(by_week):

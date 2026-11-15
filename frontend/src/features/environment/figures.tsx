@@ -17,8 +17,12 @@ interface FigureProps {
   error?: string
 }
 
-/** Weeks with the curve's lowest and highest value, or null when the season has none. */
+/** Naming a seasonal low and high needs most of the year covered; with sparse weeks the extremes are noise. */
+const MIN_WEEKS_FOR_EXTREMES = 26
+
+/** Weeks with the curve's lowest and highest value, or null when too few weeks have a value. */
 function extremes(s: Season): { lo: number; hi: number } | null {
+  if (s.median.filter(isNum).length < MIN_WEEKS_FOR_EXTREMES) return null
   let lo = -1
   let hi = -1
   s.median.forEach((v, k) => {

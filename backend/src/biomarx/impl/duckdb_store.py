@@ -158,6 +158,15 @@ class DuckRecordReader:
         ).fetchnumpy()
         return Workouts(np.asarray(r["activity"], dtype=object), np.asarray(r["a"], dtype=np.int64), np.asarray(r["b"], dtype=np.int64))
 
+    def heart_rate_minutes_of_sources(self, record_type: str, origin: dt.date) -> np.ndarray:
+        """Minute indices with a heart-rate sample from a source that has logged `record_type`: when that device was on the wrist."""
+        r = self.con.execute(
+            """SELECT DISTINCT datediff('minute', ?::TIMESTAMP, start_ts) AS m FROM records
+               WHERE type = 'HeartRate' AND source IN (SELECT DISTINCT source FROM records WHERE type = ?)""",
+            [origin, record_type],
+        ).fetchnumpy()
+        return np.asarray(r["m"], dtype=np.int64)
+
 
 class DuckSink:
     def __init__(self, con: duckdb.DuckDBPyConnection, meta: dict[str, str]) -> None:

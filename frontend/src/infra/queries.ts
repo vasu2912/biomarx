@@ -84,6 +84,13 @@ export const useBaseline = (r: Range) =>
 export const useSevenHours = (r: Range) =>
   useQuery({ queryKey: qk.analysis('seven-hours', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/seven-hours', { ...q(r), signal })), ...ranged })
 
+export const useExposures = (r: Range, key: string | null) =>
+  useQuery({
+    queryKey: [...qk.analysis('exposures', r), key ?? ''],
+    queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/exposures', { params: { query: { ...rangeQuery(r), key: key ?? undefined } }, signal })),
+    ...ranged,
+  })
+
 export const useProfile = () =>
   useQuery({ queryKey: qk.profile, queryFn: ({ signal }) => unwrap(api.GET('/api/profile', { signal })), staleTime: Infinity })
 
@@ -95,6 +102,7 @@ export function useSaveProfile() {
     onSuccess: (p) => {
       client.setQueryData(qk.profile, p)
       void client.invalidateQueries({ queryKey: ['data', 'analysis', 'fitness'] })
+      void client.invalidateQueries({ queryKey: ['data', 'analysis', 'exposures'] })
     },
   })
 }

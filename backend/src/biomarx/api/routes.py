@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from biomarx.api import schemas as s
 from biomarx.container import Container
-from biomarx.core.analysis import baseline, sleep
+from biomarx.core.analysis import baseline, exposures, sleep
 from biomarx.core.metrics import DAILY_KEYS, METRICS
 from biomarx.core.services.imports import CHUNK_SIZE, ImportConflict, ImportRejected
 from biomarx.core.services.insights import InsightService, RasterName, Window
@@ -329,6 +329,57 @@ def seven_hours(ins: Ins, w: Win) -> s.SevenHoursOut:
         shortfall_median=s.num(f["shortfall_median"], 2),
         floor_h=sleep.SLEEP_FLOOR_H,
         shortfall_nights=sleep.SHORTFALL_NIGHTS,
+    )
+
+
+@router.get("/analysis/exposures", responses={422: {"model": s.ErrorOut}})
+def night_exposures(
+    ins: Ins,
+    w: Win,
+    c: Annotated[Container, Depends(container)],
+    key: Annotated[str | None, Query(description="Exposure key; the first available one when omitted")] = None,
+) -> s.ExposuresOut:
+    if key is not None and key not in exposures.EXPOSURES:
+        raise HTTPException(422, f"Unknown exposure: {key}.")
+    p = c.profile.get()
+    sex = p.sex if p.sex in ("male", "female") else None
+    reasons = ins.exposure_catalogue(p.age, sex)
+    key = key or next((k for k, r in reasons.items() if r is None), next(iter(exposures.EXPOSURES)))
+    catalogue = [
+        s.ExposureOut(
+            key=x.key,
+            label=x.label,
+            kind=x.kind,
+            groups=[s.ExposureGroupOut(label=g.label, short=g.short) for g in x.groups],
+            unit=x.unit,
+            available=reasons[x.key] is None,
+            reason=reasons[x.key],
+        )
+        for x in exposures.EXPOSURES.values()
+    ]
+    head = dict(range=_range(w), catalogue=catalogue, key=key, min_group=exposures.MIN_GROUP, min_paired=exposures.MIN_PAIRED, resamples=exposures.RESAMPLES)
+    if reasons[key] is not None:
+        return s.ExposuresOut(**head, outcomes=[], nights=[], exposure=[], columns={})
+    e = ins.exposure(w, key, p.age, sex)
+    n, st = e["nights"], e["stats"]
+
+    def outcome(o: exposures.Outcome) -> s.ExposureOutcomeOut:
+        r = st[o.key]
+        if isinstance(r, exposures.Correlation):
+            corr = s.ExposureCorrelationOut(n=r.n, rho=s.num(r.rho, 3), p=s.num(r.p, 5), q=s.num(r.q, 5))
+            return s.ExposureOutcomeOut(key=o.key, label=o.label, cells=[], correlation=corr)
+        cells = [
+            s.GroupCellOut(n=g.n, median=s.num(g.median), diff=s.num(g.diff), ci_lo=s.num(g.ci_lo), ci_hi=s.num(g.ci_hi), p=s.num(g.p, 5), q=s.num(g.q, 5))
+            for g in r
+        ]
+        return s.ExposureOutcomeOut(key=o.key, label=o.label, cells=cells, correlation=None)
+
+    return s.ExposuresOut(
+        **head,
+        outcomes=[outcome(o) for o in exposures.OUTCOMES],
+        nights=[w.day(int(i)) for i in n.night],
+        exposure=s.vec(e["values"], 1),
+        columns={o.key: s.vec(n.cols[o.key]) for o in exposures.OUTCOMES},
     )
 
 

@@ -7,9 +7,9 @@ import time
 
 import numpy as np
 
-from biomarx.core.analysis import circadian, sleep
+from biomarx.core.analysis import circadian, exposures, sleep
 from biomarx.core.analysis.derived import Derived
-from biomarx.core.analysis.grids import build_grids
+from biomarx.core.analysis.grids import VALID_WEAR_FRACTION, build_grids, wear_mask
 from biomarx.core.domain import Timeline
 from biomarx.core.metrics import DAILY_KEYS, FITNESS_TYPES, GAIT_TYPES
 from biomarx.core.ports import ExportFormatError, RecordReader, Store
@@ -17,7 +17,7 @@ from biomarx.core.ports import ExportFormatError, RecordReader, Store
 log = logging.getLogger(__name__)
 
 # Bump whenever derive() output changes shape or values; stored databases are then re-derived from their records.
-DERIVATION_VERSION = 2
+DERIVATION_VERSION = 3
 
 
 def derive(reader: RecordReader) -> Derived:
@@ -65,7 +65,18 @@ def derive(reader: RecordReader) -> Derived:
     for key, record_type in FITNESS_TYPES.items():
         _scatter(daily[key], *reader.daily_best_source(record_type, "mean", origin))
 
+    daily["daylight"] = exposures.daily_daylight(read_daylight(reader, timeline), nd, VALID_WEAR_FRACTION)
+
     return Derived(grids, nights, daily)
+
+
+def read_daylight(reader: RecordReader, timeline: Timeline) -> exposures.Daylight:
+    """TimeInDaylight samples, and the minutes when the device that logs them was worn."""
+    start, dur, val = reader.intervals("TimeInDaylight", timeline.start)
+    has_hr = np.zeros(timeline.minutes, dtype=bool)
+    m = reader.heart_rate_minutes_of_sources("TimeInDaylight", timeline.start)
+    has_hr[m[(m >= 0) & (m < timeline.minutes)]] = True
+    return exposures.Daylight(start, dur, val, wear_mask(has_hr))
 
 
 def rederive(store: Store) -> bool:

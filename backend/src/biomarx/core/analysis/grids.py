@@ -98,7 +98,7 @@ def build_grids(
     keep = (idx >= 0) & (idx < nm)
     hr1[idx[keep]] = val[keep]
 
-    worn = maximum_filter1d(np.isfinite(hr1).astype(np.uint8), size=WEAR_WINDOW_MIN, mode="constant", cval=0) > 0
+    worn = wear_mask(np.isfinite(hr1))
 
     steps10 = np.zeros(timeline.rows * 144, dtype=np.float32)
     bidx, bval = steps_bins
@@ -106,6 +106,11 @@ def build_grids(
     steps10[bidx[keep]] = bval[keep]
 
     return Grids(timeline, hr1, worn, steps10.reshape(timeline.rows, 144), paint_sleep(nm, segments))
+
+
+def wear_mask(has_hr: np.ndarray) -> np.ndarray:
+    """Worn wherever a heart-rate sample lies within 15 minutes."""
+    return maximum_filter1d(has_hr.astype(np.uint8), size=WEAR_WINDOW_MIN, mode="constant", cval=0) > 0
 
 
 def paint_sleep(nm: int, seg: SleepSegments) -> np.ndarray:

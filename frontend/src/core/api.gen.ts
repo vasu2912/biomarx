@@ -294,6 +294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/fitness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fitness */
+        get: operations["fitness_api_analysis_fitness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecg": {
         parameters: {
             query?: never;
@@ -513,6 +530,41 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /**
+         * FitnessOut
+         * @description Weekly series over ISO weeks (Monday start) covering the range. `null` marks a week with nothing to measure.
+         */
+        FitnessOut: {
+            range: components["schemas"]["RangeOut"];
+            /** Weeks */
+            weeks: string[];
+            /** Week Days */
+            week_days: number[];
+            /** Moderate */
+            moderate: (number | null)[];
+            /** Vigorous */
+            vigorous: (number | null)[];
+            /** Hrr Moderate */
+            hrr_moderate: (number | null)[];
+            /** Hrr Vigorous */
+            hrr_vigorous: (number | null)[];
+            /** Hr Minutes */
+            hr_minutes: (number | null)[];
+            /** Trimp */
+            trimp: (number | null)[];
+            /** Strength Days */
+            strength_days: number[];
+            /** Workouts */
+            workouts: components["schemas"]["WorkoutOut"][][];
+            /** Hrmax */
+            hrmax: number | null;
+            /** Age */
+            age: number | null;
+            /** Sex */
+            sex: ("male" | "female") | null;
+            /** Steps Bands */
+            steps_bands: components["schemas"]["StepBandOut"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -558,7 +610,7 @@ export interface components {
          * MetricGroup
          * @enum {string}
          */
-        MetricGroup: "activity" | "sleep" | "circadian" | "nocturnal" | "gait";
+        MetricGroup: "activity" | "sleep" | "circadian" | "nocturnal" | "gait" | "fitness";
         /** MetricOut */
         MetricOut: {
             /** Key */
@@ -669,6 +721,15 @@ export interface components {
             dataset: components["schemas"]["DatasetOut"] | null;
             active_import: components["schemas"]["ImportJobOut"] | null;
         };
+        /** StepBandOut */
+        StepBandOut: {
+            /** Label */
+            label: string;
+            /** Lo */
+            lo: number;
+            /** Hi */
+            hi: number;
+        };
         /** SummaryOut */
         SummaryOut: {
             range: components["schemas"]["RangeOut"];
@@ -702,6 +763,22 @@ export interface components {
             values: (number | null)[];
             /** Median */
             median: number | null;
+        };
+        /** WorkoutOut */
+        WorkoutOut: {
+            /** Activity */
+            activity: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** Duration Min */
+            duration_min: number;
+            /** Strength */
+            strength: boolean;
+            /** Trimp */
+            trimp: number | null;
         };
     };
     responses: never;
@@ -1326,6 +1403,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HrActivityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fitness_api_analysis_fitness_get: {
+        parameters: {
+            query?: {
+                /** @description First day, inclusive */
+                start?: string | null;
+                /** @description Last day, exclusive */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitnessOut"];
                 };
             };
             /** @description Validation Error */

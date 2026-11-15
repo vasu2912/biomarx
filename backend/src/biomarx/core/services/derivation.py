@@ -11,13 +11,13 @@ from biomarx.core.analysis import circadian, sleep
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.grids import build_grids
 from biomarx.core.domain import Timeline
-from biomarx.core.metrics import DAILY_KEYS, GAIT_TYPES
+from biomarx.core.metrics import DAILY_KEYS, FITNESS_TYPES, GAIT_TYPES
 from biomarx.core.ports import ExportFormatError, RecordReader, Store
 
 log = logging.getLogger(__name__)
 
 # Bump whenever derive() output changes shape or values; stored databases are then re-derived from their records.
-DERIVATION_VERSION = 1
+DERIVATION_VERSION = 2
 
 
 def derive(reader: RecordReader) -> Derived:
@@ -61,6 +61,9 @@ def derive(reader: RecordReader) -> Derived:
         if record_type.endswith("Percentage") and val.size and np.nanmax(val) <= 1.01:
             val = val * 100
         _scatter(daily[key], idx, val)
+
+    for key, record_type in FITNESS_TYPES.items():
+        _scatter(daily[key], *reader.daily_best_source(record_type, "mean", origin))
 
     return Derived(grids, nights, daily)
 

@@ -1,5 +1,5 @@
-import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query'
-import type { Range } from '@/core/domain'
+import { keepPreviousData, queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ProfileInput, Range } from '@/core/domain'
 import { api, rangeQuery, unwrap } from './http'
 import { fetchRaster, type RasterName } from './raster'
 
@@ -8,6 +8,7 @@ const rk = (r: Range | null | undefined) => (r ? `${r.start}..${r.end}` : 'none'
 export const qk = {
   status: ['status'] as const,
   metrics: ['metrics'] as const,
+  profile: ['profile'] as const,
   import: (id: string) => ['import', id] as const,
   data: ['data'] as const,
   summary: (r: Range | null) => ['data', 'summary', rk(r)] as const,
@@ -74,6 +75,24 @@ export const useStateMatrix = (r: Range) =>
   useQuery({ queryKey: qk.analysis('state', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/state', { ...q(r), signal })), ...ranged })
 export const useHrActivity = (r: Range) =>
   useQuery({ queryKey: qk.analysis('hr-activity', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/hr-activity', { ...q(r), signal })), ...ranged })
+
+export const useFitness = (r: Range) =>
+  useQuery({ queryKey: qk.analysis('fitness', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/fitness', { ...q(r), signal })), ...ranged })
+
+export const useProfile = () =>
+  useQuery({ queryKey: qk.profile, queryFn: ({ signal }) => unwrap(api.GET('/api/profile', { signal })), staleTime: Infinity })
+
+/** Saving the profile changes every age- and sex-dependent figure, so their cached ranges are dropped. */
+export function useSaveProfile() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: ProfileInput) => unwrap(api.PUT('/api/profile', { body })),
+    onSuccess: (p) => {
+      client.setQueryData(qk.profile, p)
+      void client.invalidateQueries({ queryKey: ['data', 'analysis', 'fitness'] })
+    },
+  })
+}
 
 export const useEcgList = () =>
   useQuery({ queryKey: qk.ecgList, queryFn: ({ signal }) => unwrap(api.GET('/api/ecg', { signal })), staleTime: Infinity })

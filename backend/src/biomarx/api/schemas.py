@@ -248,6 +248,40 @@ class HrActivityOut(BaseModel):
     ridgeline: RidgelineOut
 
 
+class WorkoutOut(BaseModel):
+    activity: str
+    start: dt.datetime
+    duration_min: float
+    strength: bool
+    trimp: Num
+
+
+class StepBandOut(BaseModel):
+    label: str
+    lo: int
+    hi: int
+
+
+class FitnessOut(BaseModel):
+    """Weekly series over ISO weeks (Monday start) covering the range. `null` marks a week with nothing to measure."""
+
+    range: RangeOut
+    weeks: list[dt.date]
+    week_days: list[int]
+    moderate: Vec
+    vigorous: Vec
+    hrr_moderate: Vec
+    hrr_vigorous: Vec
+    hr_minutes: Vec
+    trimp: Vec
+    strength_days: list[int]
+    workouts: list[list[WorkoutOut]]
+    hrmax: Num
+    age: int | None
+    sex: Literal["male", "female"] | None
+    steps_bands: list[StepBandOut]
+
+
 class EcgSummaryOut(BaseModel):
     id: str
     recorded_at: dt.datetime

@@ -257,6 +257,43 @@ def hr_activity(ins: Ins, w: Win) -> s.HrActivityOut:
     )
 
 
+@router.get("/analysis/fitness")
+def fitness(ins: Ins, w: Win, c: Annotated[Container, Depends(container)]) -> s.FitnessOut:
+    p = c.profile.get()
+    sex = p.sex if p.sex in ("male", "female") else None
+    f = ins.fitness(w, p.age, sex)
+    wk, wt = f["weeks"], f["workout_table"]
+    origin = w.timeline.start
+
+    def workout(i: int) -> s.WorkoutOut:
+        a, b = int(wt.start[i]), int(wt.end[i])
+        return s.WorkoutOut(
+            activity=str(wt.activity[i]),
+            start=dt.datetime.combine(origin, dt.time()) + dt.timedelta(minutes=a),
+            duration_min=b - a,
+            strength=bool(f["workout_strength"][i]),
+            trimp=s.num(f["workout_trimp"][i], 1),
+        )
+
+    return s.FitnessOut(
+        range=_range(w),
+        weeks=wk.monday,
+        week_days=[int(x) for x in wk.hi - wk.lo],
+        moderate=s.vec(f["moderate"], 1),
+        vigorous=s.vec(f["vigorous"], 1),
+        hrr_moderate=s.vec(f["hrr_moderate"], 0),
+        hrr_vigorous=s.vec(f["hrr_vigorous"], 0),
+        hr_minutes=s.vec(f["hr_minutes"], 0),
+        trimp=s.vec(f["trimp"], 1),
+        strength_days=[int(x) for x in f["strength_days"]],
+        workouts=[[workout(i) for i in ids] for ids in f["workouts"]],
+        hrmax=s.num(f["hrmax"], 1),
+        age=p.age,
+        sex=sex,
+        steps_bands=[s.StepBandOut(label=label, lo=lo, hi=hi) for label, lo, hi in f["step_bands"]],
+    )
+
+
 # ---------------------------------------------------------------- ecg
 
 

@@ -17,7 +17,7 @@ from biomarx.core.ports import ExportFormatError, RecordReader, Store
 log = logging.getLogger(__name__)
 
 # Bump whenever derive() output changes shape or values; stored databases are then re-derived from their records.
-DERIVATION_VERSION = 3
+DERIVATION_VERSION = 4
 
 
 def derive(reader: RecordReader) -> Derived:
@@ -65,7 +65,9 @@ def derive(reader: RecordReader) -> Derived:
     for key, record_type in FITNESS_TYPES.items():
         _scatter(daily[key], *reader.daily_best_source(record_type, "mean", origin))
 
-    daily["daylight"] = exposures.daily_daylight(read_daylight(reader, timeline), nd, VALID_WEAR_FRACTION)
+    light = read_daylight(reader, timeline)
+    daily["daylight"] = exposures.daily_daylight(light, nd, VALID_WEAR_FRACTION)
+    daily["morning_daylight"][nights.night] = exposures.morning_daylight(nights, light)
 
     return Derived(grids, nights, daily)
 

@@ -84,6 +84,9 @@ export const useBaseline = (r: Range) =>
 export const useSevenHours = (r: Range) =>
   useQuery({ queryKey: qk.analysis('seven-hours', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/seven-hours', { ...q(r), signal })), ...ranged })
 
+export const useEnvironment = (r: Range) =>
+  useQuery({ queryKey: qk.analysis('environment', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/environment', { ...q(r), signal })), ...ranged })
+
 export const useExposures = (r: Range, key: string | null) =>
   useQuery({
     queryKey: [...qk.analysis('exposures', r), key ?? ''],

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from biomarx.api import schemas as s
 from biomarx.container import Container
-from biomarx.core.analysis import baseline, exposures, sleep
+from biomarx.core.analysis import baseline, environment, exposures, sleep
 from biomarx.core.metrics import DAILY_KEYS, METRICS
 from biomarx.core.services.imports import CHUNK_SIZE, ImportConflict, ImportRejected
 from biomarx.core.services.insights import InsightService, RasterName, Window
@@ -380,6 +380,29 @@ def night_exposures(
         nights=[w.day(int(i)) for i in n.night],
         exposure=s.vec(e["values"], 1),
         columns={o.key: s.vec(n.cols[o.key]) for o in exposures.OUTCOMES},
+    )
+
+
+@router.get("/analysis/environment")
+def light_and_sound(ins: Ins, w: Win) -> s.EnvironmentOut:
+    f = ins.sound(w)
+    wk = f["weeks"]
+    (hp, hp_n), (env, env_n) = f["headphone"], f["environmental"]
+    tl = w.timeline
+    return s.EnvironmentOut(
+        range=_range(w),
+        weeks=wk.monday,
+        week_days=[int(x) for x in wk.hi - wk.lo],
+        headphone=s.vec(hp, 2),
+        headphone_samples=[int(x) for x in hp_n],
+        environmental=s.vec(np.where(env_n > 0, env, np.nan), 2),
+        environmental_samples=[int(x) for x in env_n],
+        reference_db=environment.REFERENCE_DB,
+        allowance_hours=environment.ALLOWANCE_HOURS,
+        season_span=s.RangeOut(start=tl.start, end=tl.end),
+        seasons=[
+            s.SeasonOut(key=k, median=s.vec(x.median, 3), q25=s.vec(x.q25, 3), q75=s.vec(x.q75, 3), years=x.years.tolist()) for k, x in ins.seasons().items()
+        ],
     )
 
 

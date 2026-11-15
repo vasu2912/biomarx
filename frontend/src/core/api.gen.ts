@@ -362,6 +362,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Light And Sound */
+        get: operations["light_and_sound_api_analysis_environment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecg": {
         parameters: {
             query?: never;
@@ -614,6 +631,34 @@ export interface components {
             mean_hr: number | null;
             /** Rmssd */
             rmssd: number | null;
+        };
+        /**
+         * EnvironmentOut
+         * @description Weekly noise dose over ISO weeks covering the range, as % of the weekly allowance; seasons cover the whole dataset.
+         *
+         *     A headphone week without samples is 0 (nothing was played); an environmental week without samples is null (not measured).
+         */
+        EnvironmentOut: {
+            range: components["schemas"]["RangeOut"];
+            /** Weeks */
+            weeks: string[];
+            /** Week Days */
+            week_days: number[];
+            /** Headphone */
+            headphone: (number | null)[];
+            /** Headphone Samples */
+            headphone_samples: number[];
+            /** Environmental */
+            environmental: (number | null)[];
+            /** Environmental Samples */
+            environmental_samples: number[];
+            /** Reference Db */
+            reference_db: number;
+            /** Allowance Hours */
+            allowance_hours: number;
+            season_span: components["schemas"]["RangeOut"];
+            /** Seasons */
+            seasons: components["schemas"]["SeasonOut"][];
         };
         /** ErrorOut */
         ErrorOut: {
@@ -893,6 +938,22 @@ export interface components {
             hr: (number | null)[];
             /** Months */
             months: components["schemas"]["RidgeMonthOut"][];
+        };
+        /**
+         * SeasonOut
+         * @description Per ISO week 1–53: the median across years of weekly medians, the quartiles across years (null under two years) and the years.
+         */
+        SeasonOut: {
+            /** Key */
+            key: string;
+            /** Median */
+            median: (number | null)[];
+            /** Q25 */
+            q25: (number | null)[];
+            /** Q75 */
+            q75: (number | null)[];
+            /** Years */
+            years: number[];
         };
         /**
          * SevenHoursOut
@@ -1765,6 +1826,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    light_and_sound_api_analysis_environment_get: {
+        parameters: {
+            query?: {
+                /** @description First day, inclusive */
+                start?: string | null;
+                /** @description Last day, exclusive */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvironmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

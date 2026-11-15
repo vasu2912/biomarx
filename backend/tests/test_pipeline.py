@@ -360,3 +360,25 @@ def test_daylight_sums_per_day_and_per_morning(client):
     e = client.get("/api/analysis/exposures?key=morning_daylight").json()
     assert e["exposure"][0] is None and e["exposure"][1] == 4  # night 0 has no morning before it; 08:00 is inside 07:00–09:00
     assert next(o for o in e["outcomes"] if o["key"] == "tst")["correlation"]["n"] == DAYS - 1
+
+
+def test_environment_doses_sound_by_week_and_folds_the_year(client):
+    t = START + dt.timedelta(days=1, hours=18)
+    audio = _rec("Quantity", "HeadphoneAudioExposure", "Phone", t, t + dt.timedelta(hours=4), 83, "dBASPL")
+    audio += _rec("Quantity", "EnvironmentalAudioExposure", "Watch", t, t + dt.timedelta(minutes=30), 90, "dBASPL")
+    light = "".join(
+        _rec("Quantity", "TimeInDaylight", "Watch", START + dt.timedelta(days=d, hours=8), START + dt.timedelta(days=d, hours=8, minutes=5), 4, "min")
+        for d in range(DAYS)
+    )
+    upload(client, synthetic_export(audio + light))
+    e = client.get("/api/analysis/environment").json()
+    assert e["weeks"][0] == START.date().isoformat() and len(e["weeks"]) == 3
+    assert e["headphone"] == [pytest.approx(19.95, abs=0.01), 0, 0] and e["headphone_samples"] == [1, 0, 0]
+    assert e["environmental"] == [12.5, None, None]
+    s = {x["key"]: x for x in e["seasons"]}
+    assert list(s) == ["daylight", "onset_h", "mid_h", "tst", "rhr_next"]
+    assert s["daylight"]["median"][9] == 4 and s["daylight"]["years"][9] == 1 and s["daylight"]["q25"][9] is None  # ISO week 10
+    assert s["onset_h"]["median"][9] == pytest.approx(23.5, abs=0.02)
+
+    m = client.get("/api/daily?metrics=morning_daylight").json()["columns"]["morning_daylight"]
+    assert m[0] is None and m[1] == 4

@@ -103,6 +103,15 @@ METRICS: tuple[Metric, ...] = (
     _M("hrr1", "1-min HR recovery", "bpm", _G.FITNESS, 0, _D.HIGHER, "Heart-rate drop in the minute after a workout ends, mean of day D."),
     _M("walking_hr", "Walking HR", "bpm", _G.FITNESS, 0, _D.LOWER, "Average heart rate while walking on day D."),
     _M("daylight", "Time in daylight", "min", _G.ACTIVITY, 0, _D.NEUTRAL, "Minutes the watch sensed daylight on day D, on days that watch was worn."),
+    _M(
+        "morning_daylight",
+        "Morning daylight",
+        "min",
+        _G.ACTIVITY,
+        0,
+        _D.NEUTRAL,
+        "Minutes of daylight in the two hours after the wake time that began day D, when that watch was worn for half of them.",
+    ),
 )
 
 BY_KEY: dict[str, Metric] = {m.key: m for m in METRICS}

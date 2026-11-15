@@ -20,4 +20,5 @@ export const CHAPTERS: readonly Chapter[] = [
   { n: '06', path: '/mobility', title: 'Mobility', kicker: 'Gait, the sixth vital sign', spark: K.walkSpeed, color: SIGNAL.cool },
   { n: '07', path: '/ecg', title: 'ECG', kicker: 'Single-lead recordings', spark: null, color: SIGNAL.awake },
   { n: '08', path: '/fitness', title: 'Fitness', kicker: 'Load, intensity, capacity', spark: K.steps, color: SIGNAL.rem },
+  { n: '09', path: '/environment', title: 'Environment', kicker: 'Light and sound', spark: K.daylight, color: SIGNAL.resp },
 ]

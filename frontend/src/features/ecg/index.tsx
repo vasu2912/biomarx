@@ -100,7 +100,7 @@ const DETAIL: readonly DetailFigure[] = [
       { label: 'Single beat', color: withAlpha(SIGNAL.ink, 0.35), kind: 'line' },
       { label: 'Median beat', color: TRACE_COLOR, kind: 'line' },
     ],
-    method: { body: `${FILTER} Each beat is cut from 250 ms before to 450 ms after its peak. At most about 40 beats are drawn; the median uses all of them.` },
+    method: { body: `${FILTER} Each beat is cut from 250 ms before to 450 ms after its peak. Recordings with many beats are thinned for drawing; the median uses all of them.` },
     reading: (m) => {
       const peak = Math.max(...m.beatMedian.filter((v) => !Number.isNaN(v)))
       return (

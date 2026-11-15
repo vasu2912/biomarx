@@ -18,6 +18,10 @@ const SHOTS = [
   { name: 'patterns', route: '/patterns', figure: '5.1', parent: true },
   { name: 'ecg', route: '/ecg', figure: '7.2' },
   { name: 'mobility-week', route: '/mobility', figure: '6.3' },
+  { name: 'heart-baseline', route: '/heart', figure: '4.7' },
+  { name: 'patterns-before-night', route: '/patterns', figure: '5.4' },
+  { name: 'fitness-aerobic', route: '/fitness', figure: '8.1' },
+  { name: 'environment-seasons', route: '/environment', figure: '9.2' },
 ]
 
 const browser = await chromium.launch()

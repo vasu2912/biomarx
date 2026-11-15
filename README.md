@@ -4,7 +4,7 @@
 
 **A self-hosted observatory for your Apple Health data.**
 
-Upload one `export.zip` and get minute-level sleep actograms, circadian rhythm fits, nocturnal heart physiology, cross-metric correlations, gait trends and single-lead ECG analysis. It all runs on your machine.
+Upload one `export.zip` and get minute-level sleep actograms, circadian rhythm fits, nocturnal heart physiology, training load, cross-metric correlations, gait trends and single-lead ECG analysis. It all runs on your machine.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-4c5bff.svg)](LICENSE)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-41cfc3.svg)](https://www.python.org/)
@@ -28,13 +28,13 @@ Upload one `export.zip` and get minute-level sleep actograms, circadian rhythm f
 The Health app stores years of minute-level data from your watch, but shows only daily summaries. Biomarx reads the raw export and treats it the way a sleep or chronobiology lab would:
 
 - **Every minute counts.** Sleep stages, heart rate and steps keep their native resolution. Each day is a row in an actogram, not one number on a bar chart.
-- **Real methods, cited.** Cosinor fits, non-parametric circadian rhythm analysis (IS, IV, RA, M10, L5), the Sleep Regularity Index, MCTQ chronotype, Lomb-Scargle periodograms, Spearman correlations with FDR control, and ECG R-peak detection with HRV. Every figure has a method note.
+- **Real methods, cited.** Cosinor fits, non-parametric circadian rhythm analysis (IS, IV, RA, M10, L5), the Sleep Regularity Index, MCTQ chronotype, Lomb-Scargle periodograms, Spearman correlations with FDR control, ECG R-peak detection, RMSSD from beat-to-beat data, Banister TRIMP, heart-rate-reserve zones, and WHO activity and safe-listening limits. Every figure has a method note. There are no invented scores.
 - **Private by construction.** One process, one embedded database file, no account and no telemetry. The upload is deleted once it has been imported.
 - **Fast on years of data.** DuckDB aggregates millions of records in milliseconds, and dense matrices travel as compact binary rasters that render on canvas.
 
 ## A tour of the observatory
 
-Biomarx is organized as seven chapters. Every chart responds to one shared date range, which you can set with a preset or by brushing the full-history barcode in the top bar. The range is kept in the URL, so any view can be shared as a link.
+Biomarx is organized as nine chapters. Every chart responds to one shared date range, which you can set with a preset or by brushing the full-history barcode in the top bar. The range is kept in the URL, so any view can be shared as a link.
 
 ### Sleep: timing, depth, regularity
 
@@ -79,13 +79,21 @@ Each night is drawn noon to noon, so no night is split at midnight. Color shows 
   </tr>
 </table>
 
-The Heart chapter also tracks resting and sleeping heart rate, night HRV, the nocturnal dip, SpO2 and respiratory rate.
+The Heart chapter also tracks resting and sleeping heart rate, night HRV, the nocturnal dip, SpO2 and respiratory rate, and night RMSSD from the watch's beat-to-beat data.
+
+<img src="docs/screenshots/heart-baseline.png" alt="One row per signal, one column per night, lit where a signal moved two robust z from the previous 28 nights" width="100%" />
+
+Each night against your own previous 28 nights. The top row marks nights when two or more signals moved at once.
 
 ### Patterns: what moves together
 
 Every pair of daily metrics, ranked by Spearman correlation and ordered by clustering. Dots mark pairs that survive Benjamini-Hochberg FDR. Click any cell to plot that pair day by day.
 
 <img src="docs/screenshots/patterns.png" alt="Correlation matrix with FDR markers and a scatter of the selected pair" width="100%" />
+
+<img src="docs/screenshots/patterns-before-night.png" alt="Nights grouped by how long before sleep a workout ended, with the difference from no-workout nights and its confidence interval" width="100%" />
+
+How the night went after a workout, morning daylight, or any tag from your journal, compared with nights without it. Differences come with a 95% CI and survive FDR or are marked as not.
 
 ### ECG: single-lead recordings
 
@@ -98,6 +106,18 @@ Every recording from the watch is drawn on ECG paper with detected R-peaks. The 
 Walking speed, step length, double-support time and asymmetry, plus the shape of an ordinary week and day.
 
 <img src="docs/screenshots/mobility-week.png" alt="Median steps by weekday and by hour of day" width="100%" />
+
+### Fitness: load, intensity, capacity
+
+Weekly activity against the WHO guidelines, heart-rate-reserve intensity, training load per workout, strength days, steps against the plateau for your age, and VO2max with heart-rate recovery. Zones need your age and sex, read from the export or entered once.
+
+<img src="docs/screenshots/fitness-aerobic.png" alt="Weekly moderate and vigorous minutes as stacked bars with lines at 150 and 300" width="100%" />
+
+### Environment: light and sound
+
+Daylight time, the typical year week by week across all your years, and the weekly sound dose against the WHO safe-listening allowance.
+
+<img src="docs/screenshots/environment-seasons.png" alt="Daylight, sleep timing, total sleep and resting heart rate by week of the year" width="100%" />
 
 > The screenshots show one person's real export: about 1,600 days, 2.6 million records and 569 nights.
 
@@ -129,10 +149,14 @@ make ingest FILE=~/Downloads/export.zip
 
 ```bash
 docker build -t biomarx .
-docker run -p 127.0.0.1:4174:4174 -v biomarx-data:/data biomarx
+docker run -d --name biomarx -p 127.0.0.1:4174:4174 -v biomarx-data:/data biomarx
 ```
 
-One image serves the UI and the API on port 4174. Imported data lives in the `/data` volume.
+One container serves the UI and the API on port 4174. Your database, profile and journal live in the `biomarx-data` volume. To import from disk instead of the browser, mount the folder read-only:
+
+```bash
+docker run --rm -v biomarx-data:/data -v ~/Downloads:/import:ro biomarx ingest /import/export.zip
+```
 
 ### Build and run without Docker
 
@@ -155,8 +179,8 @@ flowchart LR
 ```
 
 1. **Upload.** The browser streams the export in 32 MiB chunks. That stays under Cloudflare's 100 MB request limit, so Biomarx works behind a tunnel.
-2. **Ingest.** A background job parses every `<Record>`, `<Workout>` and ECG in local wall-clock time. That is the right clock for circadian analysis.
-3. **Derive.** The pipeline builds minute grids for heart rate, sleep stage, wear and steps, then nights, daily metrics, cosinor and NPCRA windows, and SRI. An import replaces the dataset atomically, so re-importing a newer export converges to the same state as a fresh one.
+2. **Ingest.** A background job parses every `<Record>`, `<Workout>`, beat-to-beat HRV list and ECG in local wall-clock time. That is the right clock for circadian analysis.
+3. **Derive.** The pipeline builds minute grids for heart rate, sleep stage, wear and steps, then nights, daily metrics, cosinor and NPCRA windows, and SRI. An import replaces the dataset atomically, so re-importing a newer export converges to the same state as a fresh one. When a new version adds metrics, the server re-derives an existing database from its stored records on startup, so no new export is needed.
 4. **Serve.** The API answers range queries in columnar JSON, with one array of days and one array per metric. Dense matrices go out as little-endian binary rasters.
 5. **Draw.** The client keeps each response in a range-keyed cache and draws with visx, d3 and canvas.
 
@@ -194,13 +218,16 @@ All routes live under `/api`. Ranges are given as `start` and `end` ISO dates, w
 | `GET /summary`, `/daily`, `/nights` | headline numbers and columnar series |
 | `GET /rasters/{sleep,hr5,steps10}` | binary day by time-of-day matrices |
 | `GET /analysis/{architecture,chronotype,periodogram,correlation,state,hr-activity}` | precomputed analyses for the range |
+| `GET /analysis/{fitness,baseline,seven-hours,exposures,environment,sources,beat-to-beat}` | fitness, baselines, night comparisons, environment, data sources, RMSSD |
+| `GET`, `PUT /profile` | age and sex for zones and load, from the export or set by you |
+| `GET /journal`, `PUT /journal/{day}`, `GET`, `POST`, `DELETE /journal/tags` | your day tags |
 | `GET /ecg`, `GET /ecg/{id}` | recordings, filtered trace, R-peaks, RR intervals, Poincaré, ensemble beat |
 
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BIOMARX_DATA_DIR` | `./data` | DuckDB file and temporary uploads |
+| `BIOMARX_DATA_DIR` | `./data` | DuckDB file, profile, journal and temporary uploads |
 | `BIOMARX_STATIC_DIR` | `./frontend/dist` | built UI |
 | `BIOMARX_HOST` | `127.0.0.1` | bind address |
 | `BIOMARX_PORT` | `4174` | port |
@@ -208,7 +235,7 @@ All routes live under `/api`. Ranges are given as `start` and `end` ISO dates, w
 ## Privacy and security
 
 - Your data never leaves the machine. There are no third-party requests, no analytics and no accounts.
-- The raw upload is deleted after import. Only the DuckDB file in `BIOMARX_DATA_DIR` remains.
+- The raw upload is deleted after import. Only the DuckDB file, plus `profile.json` and `journal.json` if you use them, remain in `BIOMARX_DATA_DIR`. A new import keeps the profile and journal.
 - `.gitignore` and `.dockerignore` keep exports, databases and screenshots of your data out of git and out of images.
 - Biomarx has no authentication. Keep it on a trusted machine, or put it behind an authenticating proxy such as Cloudflare Access before you expose it.
 
@@ -233,7 +260,7 @@ node e2e/readme-shots.mjs   # regenerate the screenshots in this README
 
 - [ ] Multiple profiles, one DuckDB file each
 - [ ] Lab-report (PDF) import, carried over from the first prototype
-- [ ] A smaller Docker image
+- [x] A smaller Docker image
 - [ ] Export of derived tables to CSV and Parquet
 
 ## Contributing

@@ -180,43 +180,75 @@ export function Tabs<V extends string>({
   )
 }
 
+type SelectOption<V extends string> = { value: V; label: string; hint?: string; group?: string }
+
+/** Consecutive options with the same `group` sit under one heading. */
+function grouped<V extends string>(options: readonly SelectOption<V>[]) {
+  const out: { group?: string; options: SelectOption<V>[] }[] = []
+  for (const o of options) {
+    const last = out[out.length - 1]
+    if (last && last.group === o.group) last.options.push(o)
+    else out.push({ group: o.group, options: [o] })
+  }
+  return out
+}
+
 export function Select<V extends string>({
   value,
   onChange,
   options,
   label,
+  placeholder,
+  size = 'md',
 }: {
-  value: V
+  /** null shows the placeholder: none of these options is the current choice */
+  value: V | null
   onChange: (v: V) => void
-  options: readonly { value: V; label: string; hint?: string }[]
+  options: readonly SelectOption<V>[]
   label: string
+  placeholder?: string
+  size?: 'sm' | 'md'
 }) {
   return (
-    <S.Root value={value} onValueChange={(v) => onChange(v as V)}>
+    <S.Root value={value ?? ''} onValueChange={(v) => onChange(v as V)}>
       <S.Trigger
         aria-label={label}
-        className="inline-flex h-8 min-w-44 items-center justify-between gap-3 rounded-md border border-hairline-2 bg-sunken px-3 text-[12.5px] text-ink hover:border-ink-4"
+        className={cn(
+          'inline-flex items-center justify-between gap-3 rounded-md border border-hairline-2 bg-sunken text-ink hover:border-ink-4 data-[placeholder]:text-ink-3',
+          size === 'sm' ? 'num h-[30px] min-w-40 px-2.5 text-[11px]' : 'h-8 min-w-44 px-3 text-[12.5px]',
+        )}
       >
-        <S.Value />
+        <S.Value placeholder={placeholder} />
         <S.Icon>
           <ChevronDown size={14} className="text-ink-3" />
         </S.Icon>
       </S.Trigger>
       <S.Portal>
-        <S.Content position="popper" sideOffset={6} className="z-50 min-w-[var(--radix-select-trigger-width)] rounded-md border border-hairline-2 bg-raised p-1 shadow-2xl">
+        <S.Content
+          position="popper"
+          sideOffset={6}
+          collisionPadding={16}
+          className="z-50 max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] overflow-y-auto rounded-md border border-hairline-2 bg-raised p-1 shadow-2xl"
+        >
           <S.Viewport>
-            {options.map((o) => (
-              <S.Item
-                key={o.value}
-                value={o.value}
-                className="relative flex cursor-default items-center justify-between gap-6 rounded-[5px] py-1.5 pr-2 pl-7 text-[12.5px] text-ink-2 outline-none data-[highlighted]:bg-white/5 data-[highlighted]:text-ink"
-              >
-                <S.ItemIndicator className="absolute left-2">
-                  <Check size={13} strokeWidth={2.5} />
-                </S.ItemIndicator>
-                <S.ItemText>{o.label}</S.ItemText>
-                {o.hint && <span className="num text-[11px] text-ink-3">{o.hint}</span>}
-              </S.Item>
+            {grouped(options).map((g, i) => (
+              <S.Group key={g.group ?? i}>
+                {i > 0 && g.group && <S.Separator className="mx-2 my-1 h-px bg-hairline" />}
+                {g.group && <S.Label className="eyebrow px-2 pt-1.5 pb-1 !text-[9.5px]">{g.group}</S.Label>}
+                {g.options.map((o) => (
+                  <S.Item
+                    key={o.value}
+                    value={o.value}
+                    className="relative flex cursor-default items-center justify-between gap-6 rounded-[5px] py-1.5 pr-2 pl-7 text-[12.5px] text-ink-2 outline-none data-[highlighted]:bg-white/5 data-[highlighted]:text-ink"
+                  >
+                    <S.ItemIndicator className="absolute left-2">
+                      <Check size={13} strokeWidth={2.5} />
+                    </S.ItemIndicator>
+                    <S.ItemText>{o.label}</S.ItemText>
+                    {o.hint && <span className="num text-[11px] text-ink-3">{o.hint}</span>}
+                  </S.Item>
+                ))}
+              </S.Group>
             ))}
           </S.Viewport>
         </S.Content>

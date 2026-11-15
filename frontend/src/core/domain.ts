@@ -35,6 +35,9 @@ export type GroupCell = S['GroupCellOut']
 export type Environment = S['EnvironmentOut']
 export type Season = S['SeasonOut']
 export type Sources = S['SourcesOut']
+export type Journal = S['JournalOut']
+export type JournalDay = S['JournalDayOut']
+export type JournalTag = S['JournalTagOut']
 
 export type Column = (number | null)[]
 

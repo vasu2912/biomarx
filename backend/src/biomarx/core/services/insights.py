@@ -15,11 +15,13 @@ from biomarx.core.analysis._np import nanmedian
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.ecg import analyse_ecg
 from biomarx.core.domain import Dataset, DayRange, Timeline
+from biomarx.core.journal import Journal
 from biomarx.core.metrics import CORRELATED, DAILY_KEYS
 from biomarx.core.ports import Store
 from biomarx.core.services.derivation import read_daylight
 
 RasterName = Literal["sleep", "hr5", "steps10"]
+EMPTY = Journal()
 
 
 class NoDataset(LookupError):
@@ -262,41 +264,56 @@ class InsightService:
             "shortfall_median": nanmedian(short[inside]) if np.isfinite(short[inside]).any() else np.nan,
         }
 
-    def exposure_catalogue(self, age: int | None, sex: fitness.TrimpSex | None) -> dict[str, str | None]:
+    def exposure_catalogue(self, age: int | None, sex: fitness.TrimpSex | None, journal: Journal = EMPTY) -> dict[str, str | None]:
         """Each exposure's key with None when it can be computed, or the reason it cannot."""
         out: dict[str, str | None] = {}
-        for k in exposures.EXPOSURES:
+        for k in exposures.catalogue(journal):
             try:
-                self._exposure_values(k, age, sex)
+                self._exposure_values(k, age, sex, journal)
                 out[k] = None
             except exposures.Unavailable as e:
                 out[k] = str(e)
         return out
 
-    @memo
-    def exposure(self, w: Window, key: str, age: int | None, sex: fitness.TrimpSex | None) -> dict:
+    def exposure(self, w: Window, key: str, age: int | None, sex: fitness.TrimpSex | None, journal: Journal = EMPTY) -> dict:
         """An available exposure's per-night values and statistics over the range's nights."""
-        e = exposures.EXPOSURES[key]
+        return self._exposure(w, key, age, sex, _reads(journal, exposures.catalogue(journal)[key]))
+
+    @memo
+    def _exposure(self, w: Window, key: str, age: int | None, sex: fitness.TrimpSex | None, journal: Journal) -> dict:
+        e = exposures.catalogue(journal)[key]
         all_n = self._derived().nights
         inside = (all_n.night >= w.lo) & (all_n.night < w.hi)
         n = all_n.take(inside)
-        x = self._exposure_values(key, age, sex)[inside]
+        x = self._exposure_values(key, age, sex, journal)[inside]
         ys = {o.key: n.cols[o.key] for o in exposures.OUTCOMES}
         stats = exposures.assess_groups(x, ys, len(e.groups)) if e.kind == "groups" else exposures.assess_continuous(x, ys)
         return {"nights": n, "values": x, "stats": stats}
 
-    def _exposure_values(self, key: str, age: int | None, sex: fitness.TrimpSex | None) -> np.ndarray:
+    def _exposure_values(self, key: str, age: int | None, sex: fitness.TrimpSex | None, journal: Journal = EMPTY) -> np.ndarray:
         """Per night of the whole dataset, so night D−1 and the person's median workout are never cut off by the range."""
-        mkey = ("exposure", self._version, key, age, sex)
+        e = exposures.catalogue(journal)[key]
+        journal = _reads(journal, e)
+        mkey = ("exposure", self._version, key, age, sex, journal)
         if mkey not in self._memo:
             try:
-                self._memo[mkey] = exposures.EXPOSURES[key].values(_ExposureInputs(self, age, sex))
-            except exposures.Unavailable as e:
-                self._memo[mkey] = e
+                self._memo[mkey] = e.values(_ExposureInputs(self, age, sex, journal))
+            except exposures.Unavailable as ex:
+                self._memo[mkey] = ex
         got = self._memo[mkey]
         if isinstance(got, exposures.Unavailable):
             raise got
         return got  # type: ignore[return-value]
+
+    def _logs(self) -> exposures.Logs:
+        key = ("logs", self._version)
+        if key not in self._memo:
+            origin = self._derived().grids.timeline.start
+            with self.store.records() as r:
+                self._memo[key] = exposures.Logs(
+                    r.samples("NumberOfAlcoholicBeverages", origin), r.samples("DietaryCaffeine", origin), r.food_log_starts(origin)
+                )
+        return self._memo[key]  # type: ignore[return-value]
 
     def _daylight(self) -> exposures.Daylight:
         key = ("daylight", self._version)
@@ -360,9 +377,10 @@ class InsightService:
 class _ExposureInputs:
     """What an exposure may read, fetched only when it asks."""
 
-    def __init__(self, ins: InsightService, age: int | None, sex: fitness.TrimpSex | None) -> None:
-        self.ins, self.age, self.sex = ins, age, sex
+    def __init__(self, ins: InsightService, age: int | None, sex: fitness.TrimpSex | None, journal: Journal) -> None:
+        self.ins, self.age, self.sex, self.journal = ins, age, sex, journal
         self.nights = ins._derived().nights
+        self.origin = ins._derived().grids.timeline.start
 
     def workouts(self) -> fitness.Workouts:
         return self.ins._fitness_inputs()[2]
@@ -375,3 +393,11 @@ class _ExposureInputs:
 
     def daylight(self) -> exposures.Daylight:
         return self.ins._daylight()
+
+    def logs(self) -> exposures.Logs:
+        return self.ins._logs()
+
+
+def _reads(journal: Journal, e: exposures.Exposure) -> Journal:
+    """The journal an exposure depends on: an exposure from the watch alone is the same whatever the journal holds."""
+    return EMPTY if e.source == "watch" else journal

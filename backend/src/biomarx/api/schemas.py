@@ -9,6 +9,7 @@ import numpy as np
 from pydantic import BaseModel, field_validator
 
 from biomarx.core.domain import Dataset, ImportJob, ImportState
+from biomarx.core.journal import LABEL_MAX, MAX_CUSTOM, Journal, Tag
 from biomarx.core.metrics import Direction, Metric, MetricGroup
 from biomarx.core.services.profile import Profile
 
@@ -146,6 +147,58 @@ class ProfileIn(BaseModel):
         if v is not None and not dt.date(1900, 1, 1) <= v <= dt.date.today():
             raise ValueError("must be between 1900-01-01 and today")
         return v
+
+
+class JournalTagOut(BaseModel):
+    key: str
+    label: str
+    hint: str
+    custom: bool
+
+    @classmethod
+    def of(cls, t: Tag) -> JournalTagOut:
+        return cls(key=t.key, label=t.label, hint=t.hint, custom=t.custom)
+
+
+class JournalDayOut(BaseModel):
+    """One calendar day. `answered` means the person reviewed it; a reviewed day with no tags had nothing to note."""
+
+    date: dt.date
+    tags: list[str]
+    answered: bool
+
+    @classmethod
+    def of(cls, d: dt.date, tags: tuple[str, ...] | None) -> JournalDayOut:
+        return cls(date=d, tags=list(tags or ()), answered=tags is not None)
+
+
+class JournalOut(BaseModel):
+    """Every tag, built-in first, and the reviewed days of the range in date order. A day not listed was not reviewed."""
+
+    tags: list[JournalTagOut]
+    days: list[JournalDayOut]
+    max_custom: int
+    label_max: int
+
+    @classmethod
+    def of(cls, j: Journal, start: dt.date | None, end: dt.date | None) -> JournalOut:
+        return cls(
+            tags=[JournalTagOut.of(t) for t in j.tags],
+            days=[JournalDayOut.of(d, t) for d, t in j.between(start, end)],
+            max_custom=MAX_CUSTOM,
+            label_max=LABEL_MAX,
+        )
+
+
+class JournalDayIn(BaseModel):
+    """The whole entry for one day. `answered: false` with no tags makes the day unreviewed again."""
+
+    tags: list[str] = []
+    answered: bool = True
+
+
+class JournalTagIn(BaseModel):
+    label: str
 
 
 class SummaryOut(BaseModel):
@@ -335,6 +388,7 @@ class ExposureOut(BaseModel):
     unit: str
     available: bool
     reason: str | None
+    source: Literal["watch", "journal", "logs"]
 
 
 class GroupCellOut(BaseModel):

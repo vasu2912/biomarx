@@ -10,6 +10,7 @@ import { Figure, FigureSkeleton, Legend, RampLegend } from '@/ui/charts/Figure'
 import { EmptyState } from '@/ui/primitives'
 import { BeforeNightFigure } from './BeforeNight'
 import { CorrelationMatrix, rhoColor } from './CorrelationMatrix'
+import { JournalFigure } from './Journal'
 import { DOT, PairScatter, TREND } from './PairScatter'
 import { StateRaster } from './StateRaster'
 import { cellOf, corrModel, formatQ, formatRho, pairPoints, stateGrid, strongestPartner, Z_CLAMP, type Cell, type CorrModel, type Pair } from './model'
@@ -134,6 +135,7 @@ export default function Page() {
       </div>
       <StateFigure range={range} registry={registry} marked={pair ? [pair.a, pair.b] : []} onPick={pickA} />
       <BeforeNightFigure range={range} registry={registry} />
+      <JournalFigure range={range} />
     </ChapterPage>
   )
 }

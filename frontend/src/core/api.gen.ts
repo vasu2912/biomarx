@@ -124,6 +124,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/journal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Journal */
+        get: operations["get_journal_api_journal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/journal/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Journal Day
+         * @description Replace one day's entry. The same body twice leaves the same journal.
+         */
+        put: operations["put_journal_day_api_journal__day__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/journal/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Journal Tags */
+        get: operations["journal_tags_api_journal_tags_get"];
+        put?: never;
+        /**
+         * Add Journal Tag
+         * @description Add a tag of your own. Adding a label that is already there returns that tag.
+         */
+        post: operations["add_journal_tag_api_journal_tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/journal/tags/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Journal Tag
+         * @description Remove a tag of your own from the list and from every day; the days stay reviewed. Removing it again does nothing.
+         */
+        delete: operations["remove_journal_tag_api_journal_tags__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/summary": {
         parameters: {
             query?: never;
@@ -722,6 +800,11 @@ export interface components {
             available: boolean;
             /** Reason */
             reason: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "watch" | "journal" | "logs";
         };
         /** ExposureOutcomeOut */
         ExposureOutcomeOut: {
@@ -856,6 +939,67 @@ export interface components {
          * @enum {string}
          */
         ImportState: "uploading" | "queued" | "parsing" | "deriving" | "ready" | "failed";
+        /**
+         * JournalDayIn
+         * @description The whole entry for one day. `answered: false` with no tags makes the day unreviewed again.
+         */
+        JournalDayIn: {
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Answered
+             * @default true
+             */
+            answered: boolean;
+        };
+        /**
+         * JournalDayOut
+         * @description One calendar day. `answered` means the person reviewed it; a reviewed day with no tags had nothing to note.
+         */
+        JournalDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Tags */
+            tags: string[];
+            /** Answered */
+            answered: boolean;
+        };
+        /**
+         * JournalOut
+         * @description Every tag, built-in first, and the reviewed days of the range in date order. A day not listed was not reviewed.
+         */
+        JournalOut: {
+            /** Tags */
+            tags: components["schemas"]["JournalTagOut"][];
+            /** Days */
+            days: components["schemas"]["JournalDayOut"][];
+            /** Max Custom */
+            max_custom: number;
+            /** Label Max */
+            label_max: number;
+        };
+        /** JournalTagIn */
+        JournalTagIn: {
+            /** Label */
+            label: string;
+        };
+        /** JournalTagOut */
+        JournalTagOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Hint */
+            hint: string;
+            /** Custom */
+            custom: boolean;
+        };
         /**
          * MetricGroup
          * @enum {string}
@@ -1377,6 +1521,157 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProfileOut"];
                 };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_journal_api_journal_get: {
+        parameters: {
+            query?: {
+                /** @description First day, inclusive */
+                start?: string | null;
+                /** @description Last day, exclusive */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    put_journal_day_api_journal__day__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JournalDayIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalDayOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    journal_tags_api_journal_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalTagOut"][];
+                };
+            };
+        };
+    };
+    add_journal_tag_api_journal_tags_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JournalTagIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalTagOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    remove_journal_tag_api_journal_tags__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unprocessable Content */
             422: {

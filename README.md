@@ -28,7 +28,7 @@ Upload one `export.zip` and get minute-level sleep actograms, circadian rhythm f
 The Health app stores years of minute-level data from your watch, but shows only daily summaries. Biomarx reads the raw export and treats it the way a sleep or chronobiology lab would:
 
 - **Every minute counts.** Sleep stages, heart rate and steps keep their native resolution. Each day is a row in an actogram, not one number on a bar chart.
-- **Real methods, cited.** Cosinor fits, non-parametric circadian rhythm analysis (IS, IV, RA, M10, L5), the Sleep Regularity Index, MCTQ chronotype, Lomb-Scargle periodograms, Spearman correlations with FDR control, ECG R-peak detection, RMSSD from beat-to-beat data, Banister TRIMP, heart-rate-reserve zones, and WHO activity and safe-listening limits. Every figure has a method note. There are no invented scores.
+- **Real methods, cited.** Cosinor fits, non-parametric circadian rhythm analysis (IS, IV, RA, M10, L5), the Sleep Regularity Index, MCTQ chronotype, Lomb-Scargle periodograms, Spearman correlations with FDR control, ECG R-peak detection, RMSSD from beat-to-beat data, Banister TRIMP, heart-rate-reserve zones, and WHO activity and safe-listening limits. Every figure has a method note, and the in-app **Methods** page collects them in full with formulas, thresholds and citations. There are no invented scores.
 - **Private by construction.** One process, one embedded database file, no account and no telemetry. The upload is deleted once it has been imported.
 - **Fast on years of data.** DuckDB aggregates millions of records in milliseconds, and dense matrices travel as compact binary rasters that render on canvas.
 
@@ -121,6 +121,10 @@ Daylight time, the typical year week by week across all your years, and the week
 
 > The screenshots show one person's real export: about 1,600 days, 2.6 million records and 569 nights.
 
+### Methods: how every number is derived
+
+A reference page, linked from the chapter rail and from every figure's method note. It starts with the conventions all chapters share (night D, the main sleep episode, source choice, wear time, clock-time averaging, robust spread), then explains each chapter's figures with formulas and the published sources they follow.
+
 ## Quick start
 
 ### Requirements
@@ -199,7 +203,7 @@ frontend/           React 19, Vite, TypeScript, Tailwind v4, Radix, visx
     core/           types generated from OpenAPI, stats, formatting
     infra/          API client, raster decoding, query hooks
     ui/             design tokens, primitives, chart kit
-    features/       one folder per chapter
+    features/       one folder per chapter, plus methods/ for the reference page
 docs/               architecture notes and screenshots
 ```
 

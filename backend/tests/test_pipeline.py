@@ -447,3 +447,50 @@ def test_journal_exposures_group_the_nights_after_tagged_days(client):
     assert reviewed.count(1) == 6 and reviewed.count(0) == 6 and len(e["exposure"]) > 12
     tst = next(o for o in e["outcomes"] if o["key"] == "tst")
     assert tst["cells"][0]["n"] == 6 and tst["cells"][1]["n"] == 6 and tst["cells"][1]["diff"] == 0
+
+
+def _hrv_record(start: dt.datetime, rr_ms: list[int]) -> str:
+    """An SDNN record carrying its beat list as the Health app writes it: 12-hour clock times with centiseconds."""
+    times = [start + dt.timedelta(milliseconds=1000 + int(c)) for c in np.r_[0, np.cumsum(rr_ms)]]
+    clock = lambda t: f"{t.hour % 12 or 12}:{t:%M:%S}.{t.microsecond // 10000:02d}\u202f{t:%p}"  # noqa: E731
+    beats = "".join(f'   <InstantaneousBeatsPerMinute bpm="60" time="{clock(t)}"/>\n' for t in times)
+    return (
+        f' <Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" sourceName="Watch" unit="ms" '
+        f'startDate="{start.strftime(FMT)}" endDate="{(times[-1] + dt.timedelta(seconds=1)).strftime(FMT)}" value="40">\n'
+        '  <MetadataEntry key="HKAlgorithmVersion" value="2"/>\n'
+        f"  <HeartRateVariabilityMetadataList>\n{beats}  </HeartRateVariabilityMetadataList>\n"
+        " </Record>\n"
+    )
+
+
+def _night_lists(night: int) -> str:
+    """Night `night`: a list across midnight with a missed beat (RMSSD 40), one at 02:00 (RMSSD 30), one in the afternoon."""
+    day = START + dt.timedelta(days=night)
+    return (
+        _hrv_record(day + dt.timedelta(hours=23, minutes=59, seconds=40), [1000, 1040] * 6 + [2040] + [1000, 1040] * 5)
+        + _hrv_record(day + dt.timedelta(days=1, hours=2), [900, 930] * 12)
+        + _hrv_record(day + dt.timedelta(hours=15), [700, 800] * 12)
+    )
+
+
+def test_night_rmssd_is_the_mean_of_the_lists_inside_the_main_episode(client):
+    upload(client, synthetic_export(_night_lists(4)))
+    b = client.get("/api/analysis/beat-to-beat").json()
+    assert b["available"] is True and len(b["days"]) == DAYS
+    assert b["rmssd"][4] == pytest.approx(35) and b["ln_rmssd"][4] == pytest.approx(np.log(35), abs=1e-3)
+    assert sum(v is not None for v in b["rmssd"]) == 1, "the afternoon list is outside every main episode"
+    assert client.get("/api/nights").json()["columns"]["rmssd"][4] == pytest.approx(35)
+
+
+def test_database_imported_before_beat_lists_rederives_without_rmssd(client):
+    upload(client, synthetic_export(_night_lists(4)))
+    store = client.app.state.container.store
+    before = client.get("/api/summary").json()["values"]
+    _age_old_build(client)
+    store._con.execute("DROP TABLE hrv_beats; DELETE FROM meta WHERE key = 'beats'")
+
+    assert rederive(store) is True
+    assert client.get("/api/summary").json()["values"] == before
+    b = client.get("/api/analysis/beat-to-beat").json()
+    assert b["available"] is False and all(v is None for v in b["rmssd"] + b["ln_rmssd"] + b["mean7"])
+    assert rederive(store) is False

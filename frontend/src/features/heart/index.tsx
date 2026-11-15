@@ -1,8 +1,9 @@
 import { ChapterPage } from '@/app/ChapterPage'
 import { useObservatory } from '@/app/context'
 import { fixed } from '@/core/format'
-import { useBaseline, useDaily, useHrActivity, useNights } from '@/infra/queries'
+import { useBaseline, useBeatToBeat, useDaily, useHrActivity, useNights } from '@/infra/queries'
 import { BAND_FIGURES, BandFigure, DAILY_KEYS } from './bands'
+import { BeatToBeatFigure } from './BeatToBeat'
 import { DoseResponseFigure } from './DoseResponse'
 import { OffBaselineFigure } from './OffBaseline'
 import { RidgelineFigure } from './Ridgeline'
@@ -13,6 +14,7 @@ export default function Page() {
   const nights = useNights(range)
   const hra = useHrActivity(range)
   const base = useBaseline(range)
+  const b2b = useBeatToBeat(range)
   const nNights = nights.data?.nights.length
 
   return (
@@ -30,6 +32,7 @@ export default function Page() {
       <DoseResponseFigure data={hra.data} fetching={hra.isPlaceholderData} />
       <RidgelineFigure data={hra.data} fetching={hra.isPlaceholderData} />
       <OffBaselineFigure data={base.data} registry={registry} fetching={base.isPlaceholderData} />
+      <BeatToBeatFigure data={b2b.data} fetching={b2b.isPlaceholderData} />
     </ChapterPage>
   )
 }

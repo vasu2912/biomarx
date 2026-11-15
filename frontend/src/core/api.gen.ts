@@ -406,6 +406,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/beat-to-beat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Beat To Beat */
+        get: operations["beat_to_beat_api_analysis_beat_to_beat_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/seven-hours": {
         parameters: {
             query?: never;
@@ -568,6 +585,44 @@ export interface components {
             scale: (number | null)[];
             /** Z */
             z: (number | null)[];
+        };
+        /**
+         * BeatToBeatOut
+         * @description Per day of the range (night D): RMSSD from the beat lists inside the main episode, its natural log, the trailing
+         *     mean of ln RMSSD over `rolling_nights` (with at least `min_rolling_nights`), and the robust baseline of ln RMSSD over
+         *     the `baseline_nights` before it (`scale` is 1.4826 × MAD). `available` is false for a database imported before beat
+         *     lists were kept.
+         */
+        BeatToBeatOut: {
+            range: components["schemas"]["RangeOut"];
+            /** Days */
+            days: string[];
+            /** Available */
+            available: boolean;
+            /** Rmssd */
+            rmssd: (number | null)[];
+            /** Ln Rmssd */
+            ln_rmssd: (number | null)[];
+            /** Mean7 */
+            mean7: (number | null)[];
+            /** Median */
+            median: (number | null)[];
+            /** Scale */
+            scale: (number | null)[];
+            /** Rolling Nights */
+            rolling_nights: number;
+            /** Min Rolling Nights */
+            min_rolling_nights: number;
+            /** Baseline Nights */
+            baseline_nights: number;
+            /** Min Baseline Nights */
+            min_baseline_nights: number;
+            /** Min Rr Ms */
+            min_rr_ms: number;
+            /** Max Rr Ms */
+            max_rr_ms: number;
+            /** Min Diffs */
+            min_diffs: number;
         };
         /** ChronotypeOut */
         ChronotypeOut: {
@@ -2083,6 +2138,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BaselineOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    beat_to_beat_api_analysis_beat_to_beat_get: {
+        parameters: {
+            query?: {
+                /** @description First day, inclusive */
+                start?: string | null;
+                /** @description Last day, exclusive */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BeatToBeatOut"];
                 };
             };
             /** @description Validation Error */

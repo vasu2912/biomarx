@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from biomarx.api import schemas as s
 from biomarx.container import Container
-from biomarx.core.analysis import baseline, environment, exposures, provenance, sleep
+from biomarx.core.analysis import baseline, environment, exposures, hrv, provenance, sleep
 from biomarx.core.journal import JournalError
 from biomarx.core.metrics import DAILY_KEYS, METRICS
 from biomarx.core.services.imports import CHUNK_SIZE, ImportConflict, ImportRejected
@@ -361,6 +361,29 @@ def night_baseline(ins: Ins, w: Win) -> s.BaselineOut:
         min_concurrent=baseline.MIN_CONCURRENT,
         baseline_nights=baseline.BASELINE_NIGHTS,
         min_baseline_nights=baseline.MIN_BASELINE_NIGHTS,
+    )
+
+
+@router.get("/analysis/beat-to-beat")
+def beat_to_beat(ins: Ins, w: Win) -> s.BeatToBeatOut:
+    b = ins.beat_to_beat(w)
+    ds = ins.dataset()
+    return s.BeatToBeatOut(
+        range=_range(w),
+        days=ins.days(w),
+        available=bool(ds and ds.beats),
+        rmssd=s.vec(b["rmssd"], 1),
+        ln_rmssd=s.vec(b["ln_rmssd"], 3),
+        mean7=s.vec(b["mean7"], 3),
+        median=s.vec(b["median"], 3),
+        scale=s.vec(b["scale"], 3),
+        rolling_nights=hrv.ROLLING_NIGHTS,
+        min_rolling_nights=hrv.MIN_ROLLING_NIGHTS,
+        baseline_nights=baseline.BASELINE_NIGHTS,
+        min_baseline_nights=baseline.MIN_BASELINE_NIGHTS,
+        min_rr_ms=hrv.MIN_RR_MS,
+        max_rr_ms=hrv.MAX_RR_MS,
+        min_diffs=hrv.MIN_DIFFS,
     )
 
 

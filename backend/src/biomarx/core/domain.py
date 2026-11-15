@@ -157,3 +157,4 @@ class Dataset:
     version: str
     birth_date: dt.date | None = None
     sex: Sex = "unknown"
+    beats: bool = False  # the import kept the beat times inside HRV readings

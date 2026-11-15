@@ -17,6 +17,8 @@ export interface BandSeriesSpec {
   window?: number
   /** points only (no band), e.g. M10/L5 timing */
   dotsOnly?: boolean
+  /** hover sub-line for day i, in place of the rolling median */
+  hoverSub?: (i: number) => string | undefined
 }
 
 export interface RefLine {
@@ -222,7 +224,7 @@ export const BandChart = memo(function BandChart({
             label: s.label,
             color: s.color,
             value: fmtV(s.values[hi] ?? null),
-            sub: bands[k] ? `${fmtV(bands[k]!.median[hi])} ${s.window ?? 14}d` : undefined,
+            sub: s.hoverSub ? s.hoverSub(hi) : bands[k] ? `${fmtV(bands[k]!.median[hi])} ${s.window ?? 14}d` : undefined,
           }))}
         />
       )}

@@ -82,6 +82,8 @@ export const useFitness = (r: Range) =>
 
 export const useBaseline = (r: Range) =>
   useQuery({ queryKey: qk.analysis('baseline', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/baseline', { ...q(r), signal })), ...ranged })
+export const useBeatToBeat = (r: Range) =>
+  useQuery({ queryKey: qk.analysis('beat-to-beat', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/beat-to-beat', { ...q(r), signal })), ...ranged })
 export const useSevenHours = (r: Range) =>
   useQuery({ queryKey: qk.analysis('seven-hours', r), queryFn: ({ signal }) => unwrap(api.GET('/api/analysis/seven-hours', { ...q(r), signal })), ...ranged })
 

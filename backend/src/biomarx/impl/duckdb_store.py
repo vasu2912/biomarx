@@ -36,6 +36,7 @@ CREATE TABLE records_raw (type VARCHAR, source VARCHAR, unit VARCHAR, start_ts T
 CREATE TABLE workouts (activity VARCHAR, duration_min DOUBLE, source VARCHAR, start_ts TIMESTAMP, end_ts TIMESTAMP);
 CREATE TABLE ecg (id VARCHAR PRIMARY KEY, recorded_at TIMESTAMP, classification VARCHAR, sample_rate DOUBLE, device VARCHAR, samples BLOB);
 CREATE TABLE meta (key VARCHAR PRIMARY KEY, value VARCHAR);
+CREATE TABLE hrv_beats (start_ts TIMESTAMP, end_ts TIMESTAMP, source VARCHAR, beats BLOB);
 """
 DERIVED_SCHEMA = "CREATE TABLE grids (name VARCHAR PRIMARY KEY, rows BIGINT, cols BIGINT, dtype VARCHAR, data BLOB);"
 
@@ -177,6 +178,13 @@ class DuckRecordReader:
         ).fetchnumpy()
         return np.asarray(r["m"], dtype=np.int64)
 
+    def hrv_beats(self, origin: dt.date) -> tuple[np.ndarray, list[np.ndarray]] | None:
+        """Start minute and beat times in seconds of every HRV beat list, or None for a database imported before they were kept."""
+        if not _has_beats(self.con):
+            return None
+        rows = self._q("SELECT datediff('minute', ?::TIMESTAMP, start_ts), beats FROM hrv_beats WHERE start_ts IS NOT NULL", origin)
+        return np.array([r[0] for r in rows], dtype=np.int64), [np.frombuffer(r[1], dtype=np.float64) for r in rows]
+
     def best_source_by_day(self, record_type: str, rule: Rule, origin: dt.date) -> tuple[np.ndarray, np.ndarray]:
         """Day index and the source that supplies it, by the same rules heart rate, steps and sleep are de-duplicated with."""
         day, weight, cond = {
@@ -214,6 +222,11 @@ class DuckSink:
                FROM wbatch"""
         )
         self.con.unregister("wbatch")
+
+    def add_beats(self, batch: dict[str, list]) -> None:
+        self.con.register("bbatch", pa.table(batch))
+        self.con.execute("""INSERT INTO hrv_beats SELECT try_cast(start AS TIMESTAMP), try_cast("end" AS TIMESTAMP), source, beats FROM bbatch""")
+        self.con.unregister("bbatch")
 
     def add_ecg(self, ecg: EcgRecording) -> None:
         self.con.execute(
@@ -279,6 +292,7 @@ class DuckStaging:
             "sources": json.dumps(sources),
             "version": uuid.uuid4().hex[:12],
             "derivation_version": str(DERIVATION_VERSION),
+            "beats": "1" if _has_beats(self.con) else "",
         }
         self.con.executemany("INSERT OR REPLACE INTO meta VALUES (?, ?)", list(meta.items()))
 
@@ -371,6 +385,7 @@ class DuckStore:
             version=m["version"],
             birth_date=dt.date.fromisoformat(m["birth_date"]) if m.get("birth_date") else None,
             sex=m.get("sex", "unknown"),  # type: ignore[arg-type]
+            beats=bool(m.get("beats")),
         )
 
     def derived(self) -> Derived | None:
@@ -407,6 +422,10 @@ class DuckStore:
                 return []
             rows = self._con.execute("SELECT * FROM ecg ORDER BY recorded_at").fetchall()
         return [EcgRecording(r[0], r[1], r[2], r[3], r[4], np.frombuffer(r[5], dtype=np.float32).copy()) for r in rows]
+
+
+def _has_beats(con: duckdb.DuckDBPyConnection) -> bool:
+    return bool(con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = 'hrv_beats'").fetchone()[0])
 
 
 def _float(v) -> np.ndarray:

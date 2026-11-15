@@ -27,6 +27,9 @@ TYPE_PREFIX = re.compile(r"^HK(?:Quantity|Category|Data)TypeIdentifier")
 ECG_DIR = "electrocardiograms/"
 ECG_KEEP = ("Recorded Date", "Classification", "Sample Rate", "Device")
 SEX = {"HKBiologicalSexMale": "male", "HKBiologicalSexFemale": "female", "HKBiologicalSexOther": "other"}
+HRV_TYPE = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
+BEAT = "<InstantaneousBeatsPerMinute "
+BEAT_TIME = re.compile(r'time="([^"]*)"')
 
 
 class AppleHealthReader:
@@ -78,6 +81,9 @@ def _open_export(path: Path):
 def _scan_xml(xml: IO[str], total: int, sink: RecordSink, progress: ProgressFn) -> int:
     cols = {k: [] for k in ("type", "source", "unit", "start", "end", "value")}
     wcols = {k: [] for k in ("activity", "duration_min", "source", "start", "end")}
+    bcols = {k: [] for k in ("start", "end", "source", "beats")}
+    hrv: tuple[str, str, str] | None = None  # the open HRV record whose beat list is being read
+    beats: list[str] = []
     unescape = _Unescaper()
     n, read = 0, 0
     tick = total // 200 or 1
@@ -94,9 +100,24 @@ def _scan_xml(xml: IO[str], total: int, sink: RecordSink, progress: ProgressFn) 
             cols["end"].append(d.get("endDate", "")[:19])
             cols["value"].append(unescape(d["value"]) if "value" in d else None)
             n += 1
+            if d.get("type") == HRV_TYPE and not s.rstrip().endswith("/>"):
+                hrv = (cols["start"][-1], cols["end"][-1], cols["source"][-1])
             if n % BATCH == 0:
                 sink.add_records(cols)
                 cols = {k: [] for k in cols}
+        elif hrv is not None:
+            if s.startswith(BEAT):
+                m = BEAT_TIME.search(s)
+                if m:
+                    beats.append(m.group(1))
+            elif s.startswith("</Record>"):
+                if beats:
+                    bcols["start"].append(hrv[0])
+                    bcols["end"].append(hrv[1])
+                    bcols["source"].append(hrv[2])
+                    bcols["beats"].append(beat_seconds(hrv[0], beats).tobytes())
+                    beats = []
+                hrv = None
         elif s.startswith("<Workout "):
             d = dict(ATTR.findall(s))
             wcols["activity"].append(d.get("workoutActivityType", "").removeprefix("HKWorkoutActivityType"))
@@ -117,10 +138,34 @@ def _scan_xml(xml: IO[str], total: int, sink: RecordSink, progress: ProgressFn) 
         sink.add_records(cols)
     if wcols["activity"]:
         sink.add_workouts(wcols)
+    if bcols["start"]:
+        sink.add_beats(bcols)
     if n == 0:
         raise ExportFormatError("No health records found in this export.")
     progress(1.0, f"{n:,} records read", n)
     return n
+
+
+def beat_seconds(start: str, times: list[str]) -> np.ndarray:
+    """Beat times as float64 seconds after the record's start, from 12-hour clock times on the start's date.
+
+    A time more than 12 h before the one preceding it has crossed midnight and rolls to the next day.
+    """
+    t0 = int(start[11:13]) * 3600 + int(start[14:16]) * 60 + int(start[17:19])
+    out = np.empty(len(times))
+    prev, day = t0, 0
+    for k, t in enumerate(times):
+        clock, half = (t[:-2], t[-2:]) if t[-2:] in ("AM", "PM") else (t, "")
+        h, m, sec = clock.rstrip().split(":")
+        hh = int(h)
+        if half:
+            hh = hh % 12 + (12 if half == "PM" else 0)
+        x = hh * 3600 + int(m) * 60 + float(sec) + day
+        if x < prev - 43200:
+            day += 86400
+            x += 86400
+        out[k] = prev = x
+    return out - t0
 
 
 def parse_me(line: str) -> tuple[dt.date | None, Sex]:

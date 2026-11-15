@@ -10,6 +10,7 @@ import numpy as np
 from biomarx.core.analysis import circadian, exposures, sleep
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.grids import VALID_WEAR_FRACTION, build_grids, wear_mask
+from biomarx.core.analysis.hrv import rmssd
 from biomarx.core.domain import Timeline
 from biomarx.core.metrics import DAILY_KEYS, FITNESS_TYPES, GAIT_TYPES
 from biomarx.core.ports import ExportFormatError, RecordReader, Store
@@ -17,7 +18,7 @@ from biomarx.core.ports import ExportFormatError, RecordReader, Store
 log = logging.getLogger(__name__)
 
 # Bump whenever derive() output changes shape or values; stored databases are then re-derived from their records.
-DERIVATION_VERSION = 4
+DERIVATION_VERSION = 5
 
 
 def derive(reader: RecordReader) -> Derived:
@@ -106,6 +107,12 @@ def _add_nocturnal_samples(nights: sleep.Nights, reader: RecordReader, origin) -
     nights.cols["resp"] = sleep.window_stat(nights, *resp, np.mean)
     nights.cols["spo2"] = sleep.window_stat(nights, spo2_m, spo2_v, np.mean)
     nights.cols["spo2_p5"] = sleep.window_stat(nights, spo2_m, spo2_v, lambda v: np.percentile(v, 5))
+    # A database imported before beat lists were kept has none; its nights simply carry no RMSSD.
+    starts, lists = reader.hrv_beats(origin) or (np.zeros(0, np.int64), [])
+    per_list = np.array([rmssd(b) for b in lists])
+    ok = np.isfinite(per_list)
+    nights.cols["rmssd"] = sleep.window_stat(nights, starts[ok], per_list[ok], np.mean)
+    nights.cols["ln_rmssd"] = np.log(nights.cols["rmssd"])
 
 
 def _scatter(target: np.ndarray, idx: np.ndarray, val: np.ndarray) -> None:

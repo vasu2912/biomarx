@@ -112,6 +112,16 @@ METRICS: tuple[Metric, ...] = (
         _D.NEUTRAL,
         "Minutes of daylight in the two hours after the wake time that began day D, when that watch was worn for half of them.",
     ),
+    _M(
+        "rmssd",
+        "Night RMSSD",
+        "ms",
+        _G.NOCTURNAL,
+        0,
+        _D.HIGHER,
+        "Mean RMSSD of the beat-to-beat lists inside the main sleep episode, from the beat times Apple keeps in each HRV reading.",
+    ),
+    _M("ln_rmssd", "Night ln RMSSD", "ln ms", _G.NOCTURNAL, 2, _D.HIGHER, "Natural log of night RMSSD."),
 )
 
 BY_KEY: dict[str, Metric] = {m.key: m for m in METRICS}

@@ -17,7 +17,7 @@ const M = { top: 10, right: 24, bottom: 46, left: 66 }
 const HEIGHT = 380
 const R = 4
 
-function tickFormat(d: MetricDef, s: ScaleLinear<number, number>) {
+export function tickFormat(d: MetricDef, s: ScaleLinear<number, number>) {
   if (d.clock) return (v: number) => clock(v)
   if (d.unit === 'h') return (v: number) => `${v}h`
   if (d.unit === 'min') return (v: number) => `${v}m`
@@ -25,7 +25,7 @@ function tickFormat(d: MetricDef, s: ScaleLinear<number, number>) {
 }
 
 /** 1–99% span so a handful of extreme days cannot squash the cloud; points beyond it pin to the edge. */
-function robustDomain(vs: number[]): [number, number] {
+export function robustDomain(vs: number[]): [number, number] {
   if (!vs.length) return [0, 1]
   const s = [...vs].sort((a, b) => a - b)
   let lo = quantileSorted(s, 0.01)

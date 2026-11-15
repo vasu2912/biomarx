@@ -8,6 +8,7 @@ import { formatDate } from '@/core/time'
 import { useCorrelation, useDaily, useStateMatrix } from '@/infra/queries'
 import { Figure, FigureSkeleton, Legend, RampLegend } from '@/ui/charts/Figure'
 import { EmptyState } from '@/ui/primitives'
+import { BeforeNightFigure } from './BeforeNight'
 import { CorrelationMatrix, rhoColor } from './CorrelationMatrix'
 import { DOT, PairScatter, TREND } from './PairScatter'
 import { StateRaster } from './StateRaster'
@@ -132,6 +133,7 @@ export default function Page() {
         {model && pair ? <PairFigure range={range} registry={registry} pair={pair} cell={cellOf(model, pair)} /> : corr.isPending && <FigureSkeleton height={380} />}
       </div>
       <StateFigure range={range} registry={registry} marked={pair ? [pair.a, pair.b] : []} onPick={pickA} />
+      <BeforeNightFigure range={range} registry={registry} />
     </ChapterPage>
   )
 }

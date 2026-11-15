@@ -322,3 +322,41 @@ def test_seven_hours_counts_nights_at_the_floor(client):
     assert f["floor_h"] == 7 and f["shortfall_nights"] == 14
     assert f["share"] == 100 and f["week_share"][0] == 100 and f["week_nights"][0] >= 6
     assert f["shortfall_median"] == 0 and f["shortfall"][:13] == [None] * 13
+
+
+def test_exposures_list_what_can_be_computed_and_group_the_nights(client):
+    t0 = START + dt.timedelta(days=3, hours=22)  # ends 23:00, 30 min before that night's onset
+    workout = (
+        ' <Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="60" sourceName="Watch" '
+        f'startDate="{t0.strftime(FMT)}" endDate="{(t0 + dt.timedelta(minutes=60)).strftime(FMT)}"/>\n'
+    )
+    rest = _rec("Quantity", "RestingHeartRate", "Watch", START, START, 55, "count/min")
+    upload(client, synthetic_export(workout + rest))
+    e = client.get("/api/analysis/exposures").json()
+    cat = {c["key"]: c for c in e["catalogue"]}
+    assert e["key"] == "workout_timing" and cat["workout_timing"]["available"]
+    assert not cat["hard_workout_timing"]["available"] and "birth date" in cat["hard_workout_timing"]["reason"]
+    assert not cat["morning_daylight"]["available"]
+    assert [g["label"] for g in cat["workout_timing"]["groups"]][0] == "No workout"
+    assert e["exposure"][3] == 3 and e["exposure"].count(0) == len(e["nights"]) - 1
+    tst = next(o for o in e["outcomes"] if o["key"] == "tst")
+    assert tst["cells"][0]["n"] == len(e["nights"]) - 1 and tst["cells"][3]["n"] == 1 and tst["cells"][3]["diff"] is None
+
+    assert client.get("/api/analysis/exposures?key=morning_daylight").json()["outcomes"] == []
+    assert client.get("/api/analysis/exposures?key=nope").status_code == 422
+    client.put("/api/profile", json={"birth_date": "1986-01-01", "sex": "male"})
+    cat = {c["key"]: c for c in client.get("/api/analysis/exposures").json()["catalogue"]}
+    assert cat["hard_workout_timing"]["available"]
+
+
+def test_daylight_sums_per_day_and_per_morning(client):
+    light = "".join(
+        _rec("Quantity", "TimeInDaylight", "Watch", START + dt.timedelta(days=d, hours=8), START + dt.timedelta(days=d, hours=8, minutes=5), 4, "min")
+        for d in range(DAYS)
+    )
+    upload(client, synthetic_export(light))
+    d = client.get("/api/daily?metrics=daylight").json()["columns"]["daylight"]
+    assert d[0] == 4 and d[-1] == 4
+    e = client.get("/api/analysis/exposures?key=morning_daylight").json()
+    assert e["exposure"][0] is None and e["exposure"][1] == 4  # night 0 has no morning before it; 08:00 is inside 07:00–09:00
+    assert next(o for o in e["outcomes"] if o["key"] == "tst")["correlation"]["n"] == DAYS - 1

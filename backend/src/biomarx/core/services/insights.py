@@ -10,13 +10,14 @@ from typing import Literal
 
 import numpy as np
 
-from biomarx.core.analysis import activity, baseline, circadian, fitness, patterns, sleep
+from biomarx.core.analysis import activity, baseline, circadian, exposures, fitness, patterns, sleep
 from biomarx.core.analysis._np import nanmedian
 from biomarx.core.analysis.derived import Derived
 from biomarx.core.analysis.ecg import analyse_ecg
 from biomarx.core.domain import Dataset, DayRange, Timeline
 from biomarx.core.metrics import CORRELATED, DAILY_KEYS
 from biomarx.core.ports import Store
+from biomarx.core.services.derivation import read_daylight
 
 RasterName = Literal["sleep", "hr5", "steps10"]
 
@@ -261,6 +262,49 @@ class InsightService:
             "shortfall_median": nanmedian(short[inside]) if np.isfinite(short[inside]).any() else np.nan,
         }
 
+    def exposure_catalogue(self, age: int | None, sex: fitness.TrimpSex | None) -> dict[str, str | None]:
+        """Each exposure's key with None when it can be computed, or the reason it cannot."""
+        out: dict[str, str | None] = {}
+        for k in exposures.EXPOSURES:
+            try:
+                self._exposure_values(k, age, sex)
+                out[k] = None
+            except exposures.Unavailable as e:
+                out[k] = str(e)
+        return out
+
+    @memo
+    def exposure(self, w: Window, key: str, age: int | None, sex: fitness.TrimpSex | None) -> dict:
+        """An available exposure's per-night values and statistics over the range's nights."""
+        e = exposures.EXPOSURES[key]
+        all_n = self._derived().nights
+        inside = (all_n.night >= w.lo) & (all_n.night < w.hi)
+        n = all_n.take(inside)
+        x = self._exposure_values(key, age, sex)[inside]
+        ys = {o.key: n.cols[o.key] for o in exposures.OUTCOMES}
+        stats = exposures.assess_groups(x, ys, len(e.groups)) if e.kind == "groups" else exposures.assess_continuous(x, ys)
+        return {"nights": n, "values": x, "stats": stats}
+
+    def _exposure_values(self, key: str, age: int | None, sex: fitness.TrimpSex | None) -> np.ndarray:
+        """Per night of the whole dataset, so night D−1 and the person's median workout are never cut off by the range."""
+        mkey = ("exposure", self._version, key, age, sex)
+        if mkey not in self._memo:
+            try:
+                self._memo[mkey] = exposures.EXPOSURES[key].values(_ExposureInputs(self, age, sex))
+            except exposures.Unavailable as e:
+                self._memo[mkey] = e
+        got = self._memo[mkey]
+        if isinstance(got, exposures.Unavailable):
+            raise got
+        return got  # type: ignore[return-value]
+
+    def _daylight(self) -> exposures.Daylight:
+        key = ("daylight", self._version)
+        if key not in self._memo:
+            with self.store.records() as r:
+                self._memo[key] = read_daylight(r, self._derived().grids.timeline)
+        return self._memo[key]  # type: ignore[return-value]
+
     # ------------------------------------------------------------------ ecg
 
     def ecg(self, ecg_id: str) -> tuple[object, dict] | None:
@@ -274,3 +318,23 @@ class InsightService:
             rec = next(r for r in self.store.ecg_recordings() if r.id == ecg_id)
             self._memo[key] = analyse_ecg(rec.microvolts, rec.sample_rate)
         return self._memo[key]  # type: ignore[return-value]
+
+
+class _ExposureInputs:
+    """What an exposure may read, fetched only when it asks."""
+
+    def __init__(self, ins: InsightService, age: int | None, sex: fitness.TrimpSex | None) -> None:
+        self.ins, self.age, self.sex = ins, age, sex
+        self.nights = ins._derived().nights
+
+    def workouts(self) -> fitness.Workouts:
+        return self.ins._fitness_inputs()[2]
+
+    def workout_trimp(self) -> np.ndarray:
+        if self.age is None or self.sex is None:
+            raise exposures.Unavailable("A hard workout is weighed by training load, which needs your birth date and sex. Add them in Fitness.")
+        tl = self.ins._derived().grids.timeline
+        return self.ins.fitness(self.ins.window(tl.start, tl.end), self.age, self.sex)["workout_trimp"]
+
+    def daylight(self) -> exposures.Daylight:
+        return self.ins._daylight()

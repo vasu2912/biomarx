@@ -28,6 +28,10 @@ export type ProfileInput = S['ProfileIn']
 export type Baseline = S['BaselineOut']
 export type BaselineSignal = S['BaselineSignalOut']
 export type SevenHours = S['SevenHoursOut']
+export type Exposures = S['ExposuresOut']
+export type Exposure = S['ExposureOut']
+export type ExposureOutcome = S['ExposureOutcomeOut']
+export type GroupCell = S['GroupCellOut']
 
 export type Column = (number | null)[]
 

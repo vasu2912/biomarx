@@ -345,6 +345,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/exposures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Night Exposures */
+        get: operations["night_exposures_api_analysis_exposures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecg": {
         parameters: {
             query?: never;
@@ -603,6 +620,84 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /** ExposureCorrelationOut */
+        ExposureCorrelationOut: {
+            /** N */
+            n: number;
+            /** Rho */
+            rho: number | null;
+            /** P */
+            p: number | null;
+            /** Q */
+            q: number | null;
+        };
+        /** ExposureGroupOut */
+        ExposureGroupOut: {
+            /** Label */
+            label: string;
+            /** Short */
+            short: string;
+        };
+        /**
+         * ExposureOut
+         * @description One entry of the exposure catalogue. `reason` says, for the reader, why an unavailable exposure cannot be computed.
+         */
+        ExposureOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "groups" | "continuous";
+            /** Groups */
+            groups: components["schemas"]["ExposureGroupOut"][];
+            /** Unit */
+            unit: string;
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason: string | null;
+        };
+        /** ExposureOutcomeOut */
+        ExposureOutcomeOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Cells */
+            cells: components["schemas"]["GroupCellOut"][];
+            correlation: components["schemas"]["ExposureCorrelationOut"] | null;
+        };
+        /**
+         * ExposuresOut
+         * @description Per night D of the range, the chosen exposure (group index into `groups`, or the value) and each outcome.
+         */
+        ExposuresOut: {
+            range: components["schemas"]["RangeOut"];
+            /** Catalogue */
+            catalogue: components["schemas"]["ExposureOut"][];
+            /** Key */
+            key: string;
+            /** Outcomes */
+            outcomes: components["schemas"]["ExposureOutcomeOut"][];
+            /** Nights */
+            nights: string[];
+            /** Exposure */
+            exposure: (number | null)[];
+            /** Columns */
+            columns: {
+                [key: string]: (number | null)[];
+            };
+            /** Min Group */
+            min_group: number;
+            /** Min Paired */
+            min_paired: number;
+            /** Resamples */
+            resamples: number;
+        };
         /**
          * FitnessOut
          * @description Weekly series over ISO weeks (Monday start) covering the range. `null` marks a week with nothing to measure.
@@ -637,6 +732,26 @@ export interface components {
             sex: ("male" | "female") | null;
             /** Steps Bands */
             steps_bands: components["schemas"]["StepBandOut"][];
+        };
+        /**
+         * GroupCellOut
+         * @description One group of one outcome. The reference group (first) and groups under the minimum carry only `n` and `median`.
+         */
+        GroupCellOut: {
+            /** N */
+            n: number;
+            /** Median */
+            median: number | null;
+            /** Diff */
+            diff: number | null;
+            /** Ci Lo */
+            ci_lo: number | null;
+            /** Ci Hi */
+            ci_hi: number | null;
+            /** P */
+            p: number | null;
+            /** Q */
+            q: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1614,6 +1729,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    night_exposures_api_analysis_exposures_get: {
+        parameters: {
+            query?: {
+                /** @description Exposure key; the first available one when omitted */
+                key?: string | null;
+                /** @description First day, inclusive */
+                start?: string | null;
+                /** @description Last day, exclusive */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExposuresOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

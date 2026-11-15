@@ -320,6 +320,64 @@ class SevenHoursOut(BaseModel):
     shortfall_nights: int
 
 
+class ExposureGroupOut(BaseModel):
+    label: str
+    short: str
+
+
+class ExposureOut(BaseModel):
+    """One entry of the exposure catalogue. `reason` says, for the reader, why an unavailable exposure cannot be computed."""
+
+    key: str
+    label: str
+    kind: Literal["groups", "continuous"]
+    groups: list[ExposureGroupOut]
+    unit: str
+    available: bool
+    reason: str | None
+
+
+class GroupCellOut(BaseModel):
+    """One group of one outcome. The reference group (first) and groups under the minimum carry only `n` and `median`."""
+
+    n: int
+    median: Num
+    diff: Num
+    ci_lo: Num
+    ci_hi: Num
+    p: Num
+    q: Num
+
+
+class ExposureCorrelationOut(BaseModel):
+    n: int
+    rho: Num
+    p: Num
+    q: Num
+
+
+class ExposureOutcomeOut(BaseModel):
+    key: str
+    label: str
+    cells: list[GroupCellOut]
+    correlation: ExposureCorrelationOut | None
+
+
+class ExposuresOut(BaseModel):
+    """Per night D of the range, the chosen exposure (group index into `groups`, or the value) and each outcome."""
+
+    range: RangeOut
+    catalogue: list[ExposureOut]
+    key: str
+    outcomes: list[ExposureOutcomeOut]
+    nights: list[dt.date]
+    exposure: Vec
+    columns: dict[str, Vec]
+    min_group: int
+    min_paired: int
+    resamples: int
+
+
 class EcgSummaryOut(BaseModel):
     id: str
     recorded_at: dt.datetime
